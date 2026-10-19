@@ -344,7 +344,11 @@ test('reschedule_runs_only_through_events', function (): void {
         // The handle's can() answers for reschedule(), which passes the guard.
         ->and(Events::for($event)->can('reschedule'))->toBeTrue()
         ->and(Events::for($event)->allowedTransitions())->toContain('reschedule')
-        ->and(Lifecycles::for($event, 'status')->asSystem()->can('reschedule'))->toBeFalse();
+        ->and(Lifecycles::for($event, 'status')->asSystem()->can('reschedule'))->toBeFalse()
+        // Someone who may not manage the event: no transition at all.
+        ->and(Events::for($event)->by(User::factory()->create())->can('reschedule'))->toBeFalse()
+        ->and(Events::for($event)->by(User::factory()->create())->allowedTransitions())->toBe([])
+        ->and(Events::for($event)->by($this->user)->allowedTransitions())->toContain('reschedule', 'cancel');
 
     // Events' own verb moves the date, as before — the guard lets it through.
     Events::for($event)->reschedule('2027-03-10 20:00');
