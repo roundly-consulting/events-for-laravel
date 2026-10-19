@@ -40,6 +40,7 @@ use RoundlyConsulting\Qr\ValueObjects\Svg;
  * @property string|null $note
  * @property CarbonImmutable|null $waitlisted_at
  * @property CarbonImmutable|null $held_until
+ * @property string|null $hold_key
  * @property string|null $payment_reference
  * @property string|null $payment_url
  * @property Money|null $amount
@@ -176,6 +177,17 @@ class Rsvp extends Model
             ->count();
 
         return $ahead + 1;
+    }
+
+    /**
+     * The idempotency key for this hold's checkout — pass it to your provider so two requests for
+     * one hold (the after-commit call and a retry, the job and your own call) create one checkout.
+     * A new hold, or a refreshed one (another party or ticket type), gets a new key; null for an
+     * RSVP that was never held.
+     */
+    public function paymentIdempotencyKey(): ?string
+    {
+        return $this->hold_key === null ? null : 'ev-hold-'.$this->hold_key;
     }
 
     /**

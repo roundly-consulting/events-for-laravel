@@ -29,7 +29,8 @@ use Throwable;
  * A checkout for a hold that changed during the collector call (released, declined, refreshed,
  * or given another checkout meanwhile) is kept nowhere: nothing is announced, null is returned
  * and `RsvpPaymentRequestDiscarded` reports it so the host can void it. The same reference
- * stored meanwhile (an idempotent collector answering a repeated request) counts as stored.
+ * stored meanwhile (an idempotent collector answering a repeated request) counts as stored —
+ * collectors pass `$rsvp->paymentIdempotencyKey()` to the provider for exactly that.
  */
 final readonly class RequestAdmissionPaymentAction
 {

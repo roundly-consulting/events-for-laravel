@@ -6,6 +6,7 @@ namespace RoundlyConsulting\Events\Actions\Internal;
 
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Database\Eloquent\Model;
+use RoundlyConsulting\Crypto\CryptoManager;
 use RoundlyConsulting\Events\Enums\RsvpStatus;
 use RoundlyConsulting\Events\Events\AttendeeConfirmed;
 use RoundlyConsulting\Events\Events\AttendeePromoted;
@@ -32,6 +33,7 @@ final readonly class ApplySeatChangesAction
     public function __construct(
         private IssueCheckInCodeAction $codes,
         private Dispatcher $events,
+        private CryptoManager $crypto,
     ) {}
 
     public function execute(
@@ -125,9 +127,11 @@ final readonly class ApplySeatChangesAction
 
         $rsvp->held_until = $until->greaterThan($startsAt) ? $startsAt : $until;
         $rsvp->amount = $price?->multiply((string) $rsvp->partySize());
-        // A new hold supersedes any checkout of the previous one.
+        // A new hold supersedes any checkout of the previous one, and gets its own idempotency
+        // key (kept after the hold ends, for the audit).
         $rsvp->payment_reference = null;
         $rsvp->payment_url = null;
+        $rsvp->hold_key = $this->crypto->base32Encode($this->crypto->randomBytes(10));
     }
 
     private function waitlisted(Rsvp $rsvp, bool $requeue): void

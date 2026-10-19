@@ -83,8 +83,10 @@ final readonly class RespondToEventAction
             return $rsvp;
         });
 
+        // A new or refreshed hold has a new key — held_until alone misses a refresh near the
+        // start, where every hold ends at the start.
         if ($rsvp->status === RsvpStatus::Held && $rsvp->payment_reference === null
-            && ($rsvp->wasChanged('status') || $rsvp->wasChanged('held_until') || $rsvp->wasRecentlyCreated)) {
+            && ($rsvp->wasChanged('hold_key') || $rsvp->wasRecentlyCreated)) {
             $rsvp->getConnection()->afterCommit(fn () => $this->payments->execute($rsvp));
         }
 

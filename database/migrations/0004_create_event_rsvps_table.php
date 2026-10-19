@@ -27,6 +27,8 @@ return new class extends Migration
 
             $table->timestamp('waitlisted_at')->nullable();
             $table->timestamp('held_until')->nullable();
+            // A fresh random id per hold (and per refresh): the payment idempotency key.
+            $table->string('hold_key', 32)->nullable();
             $table->string('payment_reference', 191)->nullable()->unique('ev_rsvps_payment_unique');
             $table->text('payment_url')->nullable();
             $table->money('amount', nullable: true);

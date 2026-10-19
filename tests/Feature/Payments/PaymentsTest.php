@@ -554,3 +554,68 @@ test('a_manager_cannot_confirm_on_a_cancelled_event', function (): void {
         ->and(fn () => Events::rsvps()->confirm($rsvp->fresh() ?? $rsvp))->toThrow(RsvpClosedException::class)
         ->and($rsvp->fresh()?->status)->toBe(RsvpStatus::Expired);
 });
+
+test('each_hold_has_its_own_idempotency_key', function (): void {
+    SlowCollector::reset();
+    app()->bind(CollectsAdmissionPayment::class, SlowCollector::class);
+    $event = paidEvent(capacity: 5);
+    $user = User::factory()->create();
+    SlowCollector::$returnsNull = true;
+
+    $held = Events::for($event)->rsvp($user)->going(tier: 'supporter');
+    $key = $held->paymentIdempotencyKey();
+    // Asked again for the same hold: the same key, so the provider dedupes.
+    Events::rsvps()->requestPayment($held);
+
+    expect($key)->toMatch('/^ev-hold-[A-Z2-7]{16}$/')
+        ->and(SlowCollector::$keys)->toBe([$key, $key]);
+
+    // A refreshed hold (another party) is a new checkout with a new key.
+    $refreshed = Events::for($event)->rsvp($user)->going(tier: 'supporter', guests: 1);
+    expect($refreshed->paymentIdempotencyKey())->not->toBe($key)
+        ->and(SlowCollector::$keys[2])->toBe($refreshed->paymentIdempotencyKey());
+
+    // Leaving the hold keeps the key for the audit; a free RSVP never had one.
+    Events::rsvps()->release($refreshed);
+    expect($refreshed->fresh()?->paymentIdempotencyKey())->toBe($refreshed->paymentIdempotencyKey())
+        ->and(Events::for($event)->rsvp(User::factory()->create())->interested()->paymentIdempotencyKey())->toBeNull()
+        ->and($refreshed->fresh()?->toArray())->toHaveKey('hold_key');
+});
+
+test('two_requests_for_one_hold_with_an_idempotent_collector_store_one_checkout', function (): void {
+    SlowCollector::reset();
+    app()->bind(CollectsAdmissionPayment::class, SlowCollector::class);
+    EventBus::fake([RsvpPaymentRequestDiscarded::class]);
+    $event = paidEvent(capacity: 5);
+    SlowCollector::$returnsNull = true;
+    $held = Events::for($event)->rsvp(User::factory()->create())->going(tier: 'supporter');
+    SlowCollector::$returnsNull = false;
+    SlowCollector::$keys = [];
+
+    // The job and the host ask at once; the provider answers both with the one checkout.
+    SlowCollector::$during = static fn () => Events::rsvps()->requestPayment($held->fresh() ?? $held);
+    $outer = Events::rsvps()->requestPayment($held);
+
+    expect(SlowCollector::$keys)->toHaveCount(2)
+        ->and(array_unique(SlowCollector::$keys))->toBe([$held->paymentIdempotencyKey()])
+        ->and($outer?->reference)->toBe($held->fresh()?->payment_reference)
+        ->and(Rsvp::query()->whereNotNull('payment_reference')->count())->toBe(1);
+    EventBus::assertNotDispatched(RsvpPaymentRequestDiscarded::class);
+});
+
+test('a hold refreshed near the start asks for a new checkout', function (): void {
+    $event = paidEvent(capacity: 5);
+    $user = User::factory()->create();
+    // Ten minutes before the start every hold ends at the start, so a refresh keeps held_until.
+    Scenarios::freeze($event->starts_at->subMinutes(10)->format('Y-m-d H:i:s'));
+
+    $held = Events::for($event)->rsvp($user)->going(tier: 'supporter');
+    $first = $held->payment_reference;
+    $refreshed = Events::for($event)->rsvp($user)->going(tier: 'supporter', guests: 1);
+
+    expect($refreshed->held_until?->equalTo($event->starts_at))->toBeTrue()
+        ->and($refreshed->amount?->toDecimal())->toBe('30.00')
+        ->and($refreshed->fresh()?->payment_reference)->not->toBeNull()->not->toBe($first)
+        ->and(FakePaymentCollector::$calls)->toHaveCount(2)
+        ->and(FakePaymentCollector::$calls[1]['amount'])->toBe('30.00 EUR');
+});
