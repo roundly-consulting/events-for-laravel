@@ -332,4 +332,43 @@ final class EventsConfig
 
         return $value;
     }
+
+    public static function stopPromotingBefore(): CarbonInterval
+    {
+        return self::duration(Config::string('events.waitlist.stop_promoting_before', 'PT1H'), 'events.waitlist.stop_promoting_before');
+    }
+
+    public static function holdFor(): CarbonInterval
+    {
+        return self::duration(Config::string('events.payments.hold_for', 'PT30M'), 'events.payments.hold_for');
+    }
+
+    public static function promotionHold(): CarbonInterval
+    {
+        return self::duration(Config::string('events.payments.promotion_hold', 'PT24H'), 'events.payments.promotion_hold');
+    }
+
+    public static function checkInOpensBefore(): CarbonInterval
+    {
+        return self::duration(Config::string('events.check_in.opens_before', 'PT3H'), 'events.check_in.opens_before');
+    }
+
+    public static function checkInClosesAfter(): CarbonInterval
+    {
+        return self::duration(Config::string('events.check_in.closes_after', 'PT2H'), 'events.check_in.closes_after');
+    }
+
+    /**
+     * The QR payload template (`…/{code}`), or null for the bare code.
+     */
+    public static function checkInUrl(): ?string
+    {
+        $url = self::nullableString(config('events.check_in.url'), 'events.check_in.url');
+
+        if ($url !== null && (! str_contains($url, '{code}') || ! in_array(strtolower((string) parse_url($url, PHP_URL_SCHEME)), ['http', 'https'], true))) {
+            throw InvalidEventsConfigurationException::invalidUrlTemplate('events.check_in.url');
+        }
+
+        return $url;
+    }
 }

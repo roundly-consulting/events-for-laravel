@@ -21,7 +21,9 @@ use RoundlyConsulting\Events\Actions\Events\TransitionEventAction;
 use RoundlyConsulting\Events\Actions\Events\UnpublishEventAction;
 use RoundlyConsulting\Events\Actions\Events\UpdateEventAction;
 use RoundlyConsulting\Events\Builders\EventEditor;
+use RoundlyConsulting\Events\Builders\PendingRsvp;
 use RoundlyConsulting\Events\Contracts\EventState;
+use RoundlyConsulting\Events\DataTransferObjects\EventCounts;
 use RoundlyConsulting\Events\DataTransferObjects\UpdateEventData;
 use RoundlyConsulting\Events\Enums\EventOperation;
 use RoundlyConsulting\Events\Enums\EventPhase;
@@ -131,6 +133,45 @@ final readonly class EventHandle
     public function tiers(): EventTiers
     {
         return new EventTiers($this);
+    }
+
+    // Attendance ---------------------------------------------------------------------------------
+
+    /**
+     * An attendee's answer: `->rsvp($user)->going(tier: 'vip', guests: 1)`, `->interested()`,
+     * `->notGoing()`.
+     */
+    public function rsvp(Model $attendee): PendingRsvp
+    {
+        return new PendingRsvp($this, $attendee);
+    }
+
+    /**
+     * The managers' side of the list: `add`, `remove`, `changeTier`, `changeGuests`, `confirm`,
+     * `release`, `find`, `going`, `interested`.
+     */
+    public function attendees(): EventAttendees
+    {
+        return new EventAttendees($this);
+    }
+
+    /**
+     * The queue: `all`, `promote`, `position`.
+     */
+    public function waitlist(): EventWaitlist
+    {
+        return new EventWaitlist($this);
+    }
+
+    /**
+     * People going (guests included), RSVPs interested, people waiting, seats left.
+     */
+    public function counts(): EventCounts
+    {
+        $this->authorize('viewCounts');
+        $event = $this->event->fresh() ?? $this->event;
+
+        return new EventCounts($event->going_count, $event->interested_count, $event->waitlist_count, $event->seatsLeft());
     }
 
     // Status -------------------------------------------------------------------------------------

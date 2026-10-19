@@ -6,6 +6,7 @@ namespace RoundlyConsulting\Events\Actions\Tiers;
 
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Database\Eloquent\Model;
+use RoundlyConsulting\Events\Actions\Internal\AutoPromoteAction;
 use RoundlyConsulting\Events\DataTransferObjects\UpdateTierData;
 use RoundlyConsulting\Events\Events\TierUpdated;
 use RoundlyConsulting\Events\Models\AdmissionTier;
@@ -13,16 +14,19 @@ use RoundlyConsulting\Events\Models\Event;
 use RoundlyConsulting\Events\Support\EventTransaction;
 use RoundlyConsulting\Events\Support\LockedEvent;
 use RoundlyConsulting\Events\Support\NotGiven;
+use RoundlyConsulting\Events\Support\SeatBook;
 use RoundlyConsulting\Events\Support\TierInput;
 use RoundlyConsulting\Events\Support\TierLookup;
 
 /**
  * Changes a ticket type of the event (another event's is not found). A price change affects later
- * holds only; lowering the capacity below the seats taken bumps nobody — new requests wait.
+ * holds only; lowering the capacity below the seats taken bumps nobody — new requests wait; raising
+ * it lets the waitlist move up.
  */
 final readonly class UpdateTierAction
 {
     public function __construct(
+        private AutoPromoteAction $promote,
         private Dispatcher $events,
     ) {}
 
@@ -84,6 +88,11 @@ final readonly class UpdateTierAction
             if ($changed !== []) {
                 $tier->save();
                 $event->unsetRelation('tiers');
+
+                if (in_array('capacity', $changed, true)) {
+                    $this->promote->execute(SeatBook::open($event));
+                }
+
                 $this->events->dispatch(new TierUpdated($tier, $changed, $actor));
             }
 

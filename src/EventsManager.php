@@ -9,10 +9,15 @@ use Illuminate\Contracts\Container\Container;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
+use RoundlyConsulting\Events\Accessors\Rsvps;
 use RoundlyConsulting\Events\Accessors\Venues;
 use RoundlyConsulting\Events\Actions\Events\CreateEventAction;
+use RoundlyConsulting\Events\Actions\Internal\ReleaseAttendeeRsvpsAction;
+use RoundlyConsulting\Events\Actions\Maintenance\SweepEventsAction;
 use RoundlyConsulting\Events\Builders\EventBuilder;
 use RoundlyConsulting\Events\DataTransferObjects\CreateEventData;
+use RoundlyConsulting\Events\DataTransferObjects\SweepOptions;
+use RoundlyConsulting\Events\DataTransferObjects\SweepResult;
 use RoundlyConsulting\Events\Enums\EventOperation;
 use RoundlyConsulting\Events\Exceptions\EventNotFoundException;
 use RoundlyConsulting\Events\Handles\EventHandle;
@@ -133,6 +138,39 @@ class EventsManager
     public function venues(): Venues
     {
         return new Venues($this);
+    }
+
+    /**
+     * RSVP operations that start from the RSVP: `confirmPayment` (your webhook), `confirm`,
+     * `release`, `requestPayment`.
+     */
+    public function rsvps(): Rsvps
+    {
+        return new Rsvps($this);
+    }
+
+    /**
+     * The periodic sweep (`events:sweep`, every minute): lapsed holds released, waitlists moved up.
+     */
+    public function sweep(?SweepOptions $options = null): SweepResult
+    {
+        return $this->perform(
+            EventOperation::Sweep,
+            SweepEventsAction::class,
+            static fn (SweepEventsAction $action): SweepResult => $action->execute($options),
+            ['options' => $options],
+        );
+    }
+
+    /**
+     * A deleted attendee's RSVPs give their seats back and are removed — the `AttendsEvents`
+     * deletion hook.
+     *
+     * @internal
+     */
+    public function forgetAttendee(Model $attendee): int
+    {
+        return $this->container->make(ReleaseAttendeeRsvpsAction::class)->execute($attendee);
     }
 
     /**

@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use RoundlyConsulting\Events\Concerns\AttendsEvents;
 use RoundlyConsulting\Events\Concerns\OrganizesEvents;
 use RoundlyConsulting\Events\Contracts\Organizer;
 use RoundlyConsulting\Events\Tests\Fixtures\Factories\UserFactory;
@@ -17,6 +18,8 @@ use RoundlyConsulting\Events\Tests\Fixtures\Factories\UserFactory;
  */
 class User extends Authenticatable implements Organizer
 {
+    use AttendsEvents;
+
     /** @use HasFactory<UserFactory> */
     use HasFactory;
 

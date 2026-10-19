@@ -1,0 +1,158 @@
+<?php
+
+declare(strict_types=1);
+
+namespace RoundlyConsulting\Events\Handles;
+
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\Eloquent\Model;
+use RoundlyConsulting\Events\Actions\Rsvps\AddAttendeeAction;
+use RoundlyConsulting\Events\Actions\Rsvps\ChangeGuestsAction;
+use RoundlyConsulting\Events\Actions\Rsvps\ChangeTierAction;
+use RoundlyConsulting\Events\Actions\Rsvps\ConfirmRsvpAction;
+use RoundlyConsulting\Events\Actions\Rsvps\ReleaseHoldAction;
+use RoundlyConsulting\Events\Actions\Rsvps\RemoveAttendeeAction;
+use RoundlyConsulting\Events\Enums\EventOperation;
+use RoundlyConsulting\Events\Enums\RsvpStatus;
+use RoundlyConsulting\Events\Models\AdmissionTier;
+use RoundlyConsulting\Events\Models\Rsvp;
+use RoundlyConsulting\Events\Support\EventModels;
+
+/**
+ * `Events::for($event)->attendees()` — the managers' side of the list. Writes check the
+ * `manageAttendees` ability when the handle names an actor. An RSVP of another event is never
+ * found.
+ */
+final readonly class EventAttendees
+{
+    public function __construct(
+        private EventHandle $handle,
+    ) {}
+
+    /**
+     * Put someone on the list: going at once on any ticket type (a comp seat), over capacity only
+     * with `overCapacity: true`.
+     */
+    public function add(Model $attendee, AdmissionTier|int|string|null $tier = null, int $guests = 0, bool $overCapacity = false): Rsvp
+    {
+        $this->handle->authorize('manageAttendees');
+
+        return $this->handle->manager()->perform(
+            EventOperation::AddAttendee,
+            AddAttendeeAction::class,
+            fn (AddAttendeeAction $action): Rsvp => $action->execute($this->handle->event(), $attendee, $tier, $guests, $overCapacity, $this->handle->actor()),
+            $this->handle->context(['attendee' => $attendee, 'tier' => $tier, 'guests' => $guests]),
+        );
+    }
+
+    /**
+     * Take someone off the list (checked-in or not); their seats go to the waitlist.
+     */
+    public function remove(Rsvp|Model $who): self
+    {
+        $this->handle->authorize('manageAttendees');
+        $this->handle->manager()->perform(
+            EventOperation::RemoveAttendee,
+            RemoveAttendeeAction::class,
+            fn (RemoveAttendeeAction $action): Rsvp => $action->execute($this->handle->event(), $who, $this->handle->actor()),
+            $this->handle->context(['attendee' => $who]),
+        );
+
+        return $this;
+    }
+
+    public function changeTier(Rsvp|Model $who, AdmissionTier|int|string $tier): Rsvp
+    {
+        $this->handle->authorize('manageAttendees');
+
+        return $this->handle->manager()->perform(
+            EventOperation::ChangeTier,
+            ChangeTierAction::class,
+            fn (ChangeTierAction $action): Rsvp => $action->execute($this->handle->event(), $who, $tier, $this->handle->actor()),
+            $this->handle->context(['attendee' => $who, 'tier' => $tier]),
+        );
+    }
+
+    public function changeGuests(Rsvp|Model $who, int $guests): Rsvp
+    {
+        $this->handle->authorize('manageAttendees');
+
+        return $this->handle->manager()->perform(
+            EventOperation::ChangeGuests,
+            ChangeGuestsAction::class,
+            fn (ChangeGuestsAction $action): Rsvp => $action->execute($this->handle->event(), $who, $guests, $this->handle->actor()),
+            $this->handle->context(['attendee' => $who, 'guests' => $guests]),
+        );
+    }
+
+    /**
+     * Confirm a held RSVP by hand (paid at the door, say), with the payment reference when given.
+     */
+    public function confirm(Rsvp|Model $who, ?string $reference = null): Rsvp
+    {
+        $this->handle->authorize('manageAttendees');
+
+        return $this->handle->manager()->perform(
+            EventOperation::ConfirmRsvp,
+            ConfirmRsvpAction::class,
+            fn (ConfirmRsvpAction $action): Rsvp => $action->execute($this->handle->event(), $who, $reference, $this->handle->actor()),
+            $this->handle->context(['attendee' => $who, 'reference' => $reference]),
+        );
+    }
+
+    /**
+     * Release a hold now (the payment failed); the waitlist moves up.
+     */
+    public function release(Rsvp|Model $who): Rsvp
+    {
+        $this->handle->authorize('manageAttendees');
+
+        return $this->handle->manager()->perform(
+            EventOperation::ReleaseHold,
+            ReleaseHoldAction::class,
+            fn (ReleaseHoldAction $action): Rsvp => $action->execute($this->handle->event(), $who, $this->handle->actor()),
+            $this->handle->context(['attendee' => $who]),
+        );
+    }
+
+    /**
+     * The attendee's RSVP, or null.
+     */
+    public function find(Model $attendee): ?Rsvp
+    {
+        return EventModels::rsvp()::query()
+            ->where('event_id', $this->handle->event()->getKey())
+            ->where('attendee_type', $attendee->getMorphClass())
+            ->where('attendee_id', $attendee->getKey())
+            ->first();
+    }
+
+    /**
+     * @return Collection<int, Rsvp>
+     */
+    public function going(): Collection
+    {
+        return $this->withStatus(RsvpStatus::Going);
+    }
+
+    /**
+     * @return Collection<int, Rsvp>
+     */
+    public function interested(): Collection
+    {
+        return $this->withStatus(RsvpStatus::Interested);
+    }
+
+    /**
+     * @return Collection<int, Rsvp>
+     */
+    private function withStatus(RsvpStatus $status): Collection
+    {
+        return EventModels::rsvp()::query()
+            ->where('event_id', $this->handle->event()->getKey())
+            ->where('status', $status->value)
+            ->with('attendee')
+            ->orderBy('id')
+            ->get();
+    }
+}

@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Events\Listeners;
 
+use RoundlyConsulting\Events\Actions\Internal\ExpireHoldsAction;
 use RoundlyConsulting\Events\Contracts\EventState;
 use RoundlyConsulting\Events\Enums\EventPhase;
 use RoundlyConsulting\Events\Models\Event;
 use RoundlyConsulting\Events\Support\EventModels;
+use RoundlyConsulting\Events\Support\SeatBook;
 use RoundlyConsulting\Lifecycle\Events\LifecycleTransitioning;
 
 /**
@@ -19,6 +21,10 @@ use RoundlyConsulting\Lifecycle\Events\LifecycleTransitioning;
  */
 final readonly class OnEventTransitioning
 {
+    public function __construct(
+        private ExpireHoldsAction $holds,
+    ) {}
+
     public function handle(LifecycleTransitioning $transitioning): void
     {
         $event = $transitioning->subject;
@@ -37,8 +43,13 @@ final readonly class OnEventTransitioning
         }
     }
 
+    /**
+     * Every hold expires (no payment is collected for a cancelled event); going attendees keep their
+     * RSVPs — they are told, and the host refunds the paid ones (`RsvpCancelled` is not fired for
+     * them: they did not leave).
+     */
     private function onCancelled(Event $event): void
     {
-        // Held seats are released in the RSVP engine (phase D).
+        $this->holds->execute(SeatBook::open($event), all: true);
     }
 }

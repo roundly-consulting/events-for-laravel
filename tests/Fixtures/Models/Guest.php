@@ -7,6 +7,7 @@ namespace RoundlyConsulting\Events\Tests\Fixtures\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Notifications\Notifiable;
+use RoundlyConsulting\Events\Concerns\AttendsEvents;
 use RoundlyConsulting\Events\Tests\Fixtures\Factories\GuestFactory;
 
 /**
@@ -14,6 +15,8 @@ use RoundlyConsulting\Events\Tests\Fixtures\Factories\GuestFactory;
  */
 class Guest extends Model
 {
+    use AttendsEvents;
+
     /** @use HasFactory<GuestFactory> */
     use HasFactory;
 

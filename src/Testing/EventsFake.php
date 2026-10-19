@@ -6,11 +6,16 @@ namespace RoundlyConsulting\Events\Testing;
 
 use Closure;
 use Illuminate\Contracts\Container\Container;
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\Eloquent\Model;
 use PHPUnit\Framework\Assert as PHPUnit;
 use RoundlyConsulting\Events\DataTransferObjects\UpdateEventData;
 use RoundlyConsulting\Events\Enums\EventOperation;
+use RoundlyConsulting\Events\Enums\RsvpStatus;
 use RoundlyConsulting\Events\EventsManager;
+use RoundlyConsulting\Events\Models\AdmissionTier;
 use RoundlyConsulting\Events\Models\Event;
+use RoundlyConsulting\Events\Models\Rsvp;
 use RoundlyConsulting\Events\Models\Venue;
 use RoundlyConsulting\Events\Support\NotGiven;
 
@@ -191,6 +196,81 @@ final class EventsFake extends EventsManager
     public function assertNoVenueCreated(): void
     {
         $this->assertNotRecorded(EventOperation::CreateVenue);
+    }
+
+    // Ticket types ---------------------------------------------------------------------------
+
+    /**
+     * @param  (Closure(AdmissionTier): bool)|null  $callback
+     */
+    public function assertTierCreated(?Closure $callback = null): void
+    {
+        $this->assertRecorded(EventOperation::CreateTier, static fn (RecordedEventOperation $recorded): bool => $callback === null
+            || ($recorded->result instanceof AdmissionTier && $callback($recorded->result)));
+    }
+
+    public function assertNoTierCreated(): void
+    {
+        $this->assertNotRecorded(EventOperation::CreateTier);
+    }
+
+    // RSVPs ----------------------------------------------------------------------------------
+
+    /**
+     * An answer (through the handle, the manager or `$model->rsvp($event)`) for `$event` by
+     * `$attendee` that ended in `$status` — each null means any.
+     */
+    public function assertRsvped(?Event $event = null, ?Model $attendee = null, ?RsvpStatus $status = null): void
+    {
+        $this->assertRecorded(EventOperation::Rsvp, static function (RecordedEventOperation $recorded) use ($event, $attendee, $status): bool {
+            $rsvp = $recorded->result;
+
+            return $rsvp instanceof Rsvp
+                && $recorded->concerns($event)
+                && ($attendee === null || ($rsvp->attendee_type === $attendee->getMorphClass() && (string) $rsvp->attendee_id === (string) $attendee->getKey()))
+                && ($status === null || $rsvp->status === $status);
+        });
+    }
+
+    public function assertNothingRsvped(): void
+    {
+        $this->assertNotRecorded(EventOperation::Rsvp);
+    }
+
+    /**
+     * A manual waitlist promotion of `$event` that promoted someone.
+     */
+    public function assertPromoted(?Event $event = null): void
+    {
+        $this->assertRecorded(EventOperation::PromoteWaitlist, static fn (RecordedEventOperation $recorded): bool => $recorded->concerns($event)
+            && $recorded->result instanceof Collection && $recorded->result->isNotEmpty());
+    }
+
+    public function assertNothingPromoted(): void
+    {
+        $this->assertNotRecorded(EventOperation::PromoteWaitlist);
+    }
+
+    public function assertPaymentConfirmed(?string $reference = null): void
+    {
+        $this->assertRecorded(EventOperation::ConfirmPayment, static fn (RecordedEventOperation $recorded): bool => $reference === null || $recorded->context['reference'] === $reference);
+    }
+
+    public function assertNoPaymentConfirmed(): void
+    {
+        $this->assertNotRecorded(EventOperation::ConfirmPayment);
+    }
+
+    // Maintenance ----------------------------------------------------------------------------
+
+    public function assertSwept(): void
+    {
+        $this->assertRecorded(EventOperation::Sweep, static fn (): bool => true);
+    }
+
+    public function assertNothingSwept(): void
+    {
+        $this->assertNotRecorded(EventOperation::Sweep);
     }
 
     // Plumbing -------------------------------------------------------------------------------

@@ -6,11 +6,15 @@ namespace RoundlyConsulting\Events;
 
 use Illuminate\Contracts\Auth\Access\Gate;
 use Illuminate\Contracts\Events\Dispatcher;
+use RoundlyConsulting\Events\Contracts\CheckInCodes;
+use RoundlyConsulting\Events\Contracts\CollectsAdmissionPayment;
 use RoundlyConsulting\Events\Listeners\OnEventTransitioned;
 use RoundlyConsulting\Events\Listeners\OnEventTransitioning;
+use RoundlyConsulting\Events\Payments\NoPaymentCollector;
 use RoundlyConsulting\Events\Support\EventModels;
 use RoundlyConsulting\Events\Support\EventsConfig;
 use RoundlyConsulting\Events\Support\LifecycleCheck;
+use RoundlyConsulting\Events\Support\RandomCheckInCodes;
 use RoundlyConsulting\Events\Support\SqliteGeometry;
 use RoundlyConsulting\Events\Support\TransitionNotes;
 use RoundlyConsulting\Lifecycle\Events\LifecycleTransitioned;
@@ -38,6 +42,8 @@ final class EventsServiceProvider extends PackageServiceProvider
         parent::register();
 
         $this->app->singleton(EventsManager::class);
+        $this->bindFromConfig(CollectsAdmissionPayment::class, 'events.payments.collector', NoPaymentCollector::class);
+        $this->app->bindIf(CheckInCodes::class, RandomCheckInCodes::class);
         $this->app->singleton(LifecycleCheck::class);
         $this->app->singleton(SqliteGeometry::class);
         // Per request / job: what an action tells the lifecycle bridge about its transition.

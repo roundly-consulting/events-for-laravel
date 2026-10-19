@@ -7,6 +7,7 @@ use RoundlyConsulting\Events\Models\AdmissionTier;
 use RoundlyConsulting\Events\Models\Event;
 use RoundlyConsulting\Events\Models\Rsvp;
 use RoundlyConsulting\Events\Models\Venue;
+use RoundlyConsulting\Events\Payments\NoPaymentCollector;
 use RoundlyConsulting\Events\Policies\EventPolicy;
 use RoundlyConsulting\Events\Policies\VenuePolicy;
 
@@ -158,6 +159,47 @@ return [
 
     'tiers' => [
         'default_currency' => env('EVENTS_DEFAULT_CURRENCY'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Waitlist and payments
+    |--------------------------------------------------------------------------
+    |
+    | Freed seats go to the waitlist automatically (first fit, in order) until
+    | `stop_promoting_before` the start — late promotions fill seats with people who do not
+    | come; managers can still promote by hand. A paid ticket type holds the seats for
+    | `hold_for` (`promotion_hold` for a promoted attendee) while your payment collector — a
+    | class implementing Contracts\CollectsAdmissionPayment — opens a checkout; confirm it from
+    | your webhook with `Events::rsvps()->confirmPayment($reference)`.
+    |
+    */
+
+    'waitlist' => [
+        'stop_promoting_before' => 'PT1H',
+    ],
+
+    'payments' => [
+        'collector' => NoPaymentCollector::class,
+        'hold_for' => 'PT30M',
+        'promotion_hold' => 'PT24H',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Check-in
+    |--------------------------------------------------------------------------
+    |
+    | Codes scan from `opens_before` the start until `closes_after` the end. With `url`
+    | (e.g. https://example.com/check-in/{code}) the QR code carries that link instead of the
+    | bare code; check-in reads both.
+    |
+    */
+
+    'check_in' => [
+        'opens_before' => 'PT3H',
+        'closes_after' => 'PT2H',
+        'url' => env('EVENTS_CHECK_IN_URL'),
     ],
 
     /*

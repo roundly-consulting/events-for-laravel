@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Event as EventBus;
+use RoundlyConsulting\Events\DataTransferObjects\UpdateEventData;
 use RoundlyConsulting\Events\Enums\AttendanceMode;
 use RoundlyConsulting\Events\Enums\EventPhase;
+use RoundlyConsulting\Events\Enums\RsvpStatus;
 use RoundlyConsulting\Events\Events\EventCancelled;
 use RoundlyConsulting\Events\Events\EventCompleted;
 use RoundlyConsulting\Events\Events\EventMovedOnline;
@@ -15,9 +17,11 @@ use RoundlyConsulting\Events\Events\EventRescheduled;
 use RoundlyConsulting\Events\Events\EventStatusChanged;
 use RoundlyConsulting\Events\Events\EventUnpublished;
 use RoundlyConsulting\Events\Events\EventUpdated;
+use RoundlyConsulting\Events\Events\RsvpHoldExpired;
 use RoundlyConsulting\Events\Exceptions\EventTransitionDeniedException;
 use RoundlyConsulting\Events\Exceptions\InvalidEventException;
 use RoundlyConsulting\Events\Exceptions\InvalidEventLifecycleException;
+use RoundlyConsulting\Events\Exceptions\RsvpClosedException;
 use RoundlyConsulting\Events\Exceptions\UnknownEventTransitionException;
 use RoundlyConsulting\Events\Facades\Events;
 use RoundlyConsulting\Events\Models\Event;
@@ -27,6 +31,7 @@ use RoundlyConsulting\Events\Tests\Fixtures\Lifecycles\BrokenLifecycle;
 use RoundlyConsulting\Events\Tests\Fixtures\Lifecycles\CustomLifecycle;
 use RoundlyConsulting\Events\Tests\Fixtures\Models\User;
 use RoundlyConsulting\Lifecycle\Facades\Lifecycles;
+use RoundlyConsulting\Money\Money;
 
 beforeEach(function (): void {
     $this->user = User::factory()->create();
@@ -226,10 +231,26 @@ test('lifecycle_bridge_dispatches_phase_events', function (): void {
 });
 
 test('cancellation_effects', function (): void {
+    EventBus::fake([RsvpHoldExpired::class]);
     $event = publishedEvent($this->user);
+    Events::for($event)->update(new UpdateEventData(capacity: 3));
+    Events::for($event)->tiers()->add('Supporter', price: Money::ofMajor('10', 'EUR'), key: 'supporter');
+    Events::for($event)->tiers()->add('Free', key: 'free');
+    $held = Events::for($event)->rsvp(User::factory()->create())->going(tier: 'supporter');
+    $going = Events::for($event)->rsvp(User::factory()->create())->going(tier: 'free');
     $sequence = $event->fresh()?->sequence;
 
     Events::for($event)->cancel('Venue flooded');
+
+    // Holds are released (no payment is collected for a cancelled event); going attendees keep
+    // their RSVPs (they are told; paid ones refunded by the host).
+    expect($held->fresh()?->status)->toBe(RsvpStatus::Expired)
+        ->and($going->fresh()?->status)->toBe(RsvpStatus::Going)
+        ->and($event->fresh()?->seats_taken)->toBe(1);
+    EventBus::assertDispatched(RsvpHoldExpired::class);
+
+    // Auto-promotion stops: nobody moves up after a cancellation.
+    expect(fn () => Events::for($event)->rsvp(User::factory()->create())->going(tier: 'free'))->toThrow(RsvpClosedException::class);
 
     expect($event->fresh()?->phase)->toBe(EventPhase::Cancelled)
         ->and($event->fresh()?->sequence)->toBe($sequence + 1)

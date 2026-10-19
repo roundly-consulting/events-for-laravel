@@ -20,6 +20,8 @@ use RoundlyConsulting\Events\Testing\EventsFake;
  * @method static \Illuminate\Database\Eloquent\Builder<\RoundlyConsulting\Events\Models\Event> browse(\Illuminate\Database\Eloquent\Model|null $viewer = null)
  * @method static \Illuminate\Database\Eloquent\Builder<\RoundlyConsulting\Events\Models\Event> visibleTo(\Illuminate\Database\Eloquent\Model|null $viewer)
  * @method static \RoundlyConsulting\Events\Accessors\Venues venues()
+ * @method static \RoundlyConsulting\Events\Accessors\Rsvps rsvps()
+ * @method static \RoundlyConsulting\Events\DataTransferObjects\SweepResult sweep(\RoundlyConsulting\Events\DataTransferObjects\SweepOptions|null $options = null)
  * @method static list<\RoundlyConsulting\Events\Testing\RecordedEventOperation> recorded(\RoundlyConsulting\Events\Enums\EventOperation|null $operation = null)
  * @method static void assertNothingHappened()
  * @method static void assertCreated(\Closure|null $callback = null)
@@ -38,6 +40,16 @@ use RoundlyConsulting\Events\Testing\EventsFake;
  * @method static void assertNothingCompleted()
  * @method static void assertVenueCreated(\Closure|null $callback = null)
  * @method static void assertNoVenueCreated()
+ * @method static void assertTierCreated(\Closure|null $callback = null)
+ * @method static void assertNoTierCreated()
+ * @method static void assertRsvped(\RoundlyConsulting\Events\Models\Event|null $event = null, \Illuminate\Database\Eloquent\Model|null $attendee = null, \RoundlyConsulting\Events\Enums\RsvpStatus|null $status = null)
+ * @method static void assertNothingRsvped()
+ * @method static void assertPromoted(\RoundlyConsulting\Events\Models\Event|null $event = null)
+ * @method static void assertNothingPromoted()
+ * @method static void assertPaymentConfirmed(string|null $reference = null)
+ * @method static void assertNoPaymentConfirmed()
+ * @method static void assertSwept()
+ * @method static void assertNothingSwept()
  *
  * @see EventsManager
  */

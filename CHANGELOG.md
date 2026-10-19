@@ -20,5 +20,8 @@ Initial public release.
 - Public, unlisted (link-only, by uuid) and private (invite-only) events, one visibility rule for the policy and the query scopes, and managers through the organizer, co-hosts and an admin ability.
 - A poster in a media-library bucket with queued webp variants and a URL that never throws.
 - Ticket types per event (`Events::for($event)->tiers()`) with keys that are never suffixed, prices in Money, capacity, sale windows and party-size limits.
+- RSVPs (`Events::for($event)->rsvp($user)->going()`, `$user->rsvp($event)` through `AttendsEvents`): going, interested or not going, with guests within each ticket type's party limits, event and ticket type capacity, and a waitlist that promotes first fit in order — race-free under concurrent requests on PostgreSQL and MySQL, with no queue-jumping and an automatic cutoff before the start.
+- Paid ticket types hold seats while a payment is pending: a host `CollectsAdmissionPayment` collector opens the checkout, your webhook confirms with `Events::rsvps()->confirmPayment()`, late and declined payments are refused for refund, and `Events::sweep()` releases lapsed holds.
+- Managers' list tools (`attendees()`: add, remove, change ticket type or guests, confirm, release) and waitlist tools (`waitlist()`: list, promote, position), and `counts()`.
 - A recording, still-performing `Events::fake()`.
 - English and Slovak translations.

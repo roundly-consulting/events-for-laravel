@@ -6,6 +6,7 @@ namespace RoundlyConsulting\Events\Actions\Events;
 
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Database\Eloquent\Model;
+use RoundlyConsulting\Events\Actions\Internal\AutoPromoteAction;
 use RoundlyConsulting\Events\Actions\Internal\ResolveScheduleAction;
 use RoundlyConsulting\Events\DataTransferObjects\ResolvedSchedule;
 use RoundlyConsulting\Events\DataTransferObjects\ScheduleData;
@@ -22,6 +23,7 @@ use RoundlyConsulting\Events\Support\EventModels;
 use RoundlyConsulting\Events\Support\EventTransaction;
 use RoundlyConsulting\Events\Support\LockedEvent;
 use RoundlyConsulting\Events\Support\NotGiven;
+use RoundlyConsulting\Events\Support\SeatBook;
 use RoundlyConsulting\Events\Support\Timezones;
 use RoundlyConsulting\Events\Support\WallClock;
 
@@ -29,7 +31,7 @@ use RoundlyConsulting\Events\Support\WallClock;
  * Changes an event: only the fields given. A new start on a published event is refused —
  * `reschedule()` keeps the announced date and tells attendees. An end, a doors time or a
  * timezone change (instants kept, local dates recomputed) is an ordinary update; a time, venue
- * or online-link change raises the calendar `sequence`. Fires `EventUpdated` with the changed attributes, nothing when nothing changed.
+ * or online-link change raises the calendar `sequence`. A higher capacity lets the waitlist move up. Fires `EventUpdated` with the changed attributes, nothing when nothing changed.
  */
 final readonly class UpdateEventAction
 {
@@ -38,6 +40,7 @@ final readonly class UpdateEventAction
 
     public function __construct(
         private ResolveScheduleAction $schedules,
+        private AutoPromoteAction $promote,
         private Dispatcher $events,
     ) {}
 
@@ -68,6 +71,11 @@ final readonly class UpdateEventAction
             // An Eloquent save, never a quiet or query-builder write: lifecycle re-arms the
             // automatic completion when ends_at changes.
             $event->save();
+
+            // More room (a higher or no capacity) lets the waitlist move up.
+            if (in_array('capacity', $changed, true)) {
+                $this->promote->execute(SeatBook::open($event));
+            }
 
             $this->events->dispatch(new EventUpdated($event, array_values(array_diff($changed, ['sequence', 'updated_at'])), $actor, $silent));
 
