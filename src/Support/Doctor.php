@@ -196,7 +196,7 @@ final readonly class Doctor
         }
 
         if (EventsConfig::routesEnabled() && EventsConfig::authMiddleware() === []) {
-            $findings[] = self::warning('routes', 'The JSON API is on without events.routes.auth_middleware: writes are open to anyone your other middleware lets through.');
+            $findings[] = self::warning('routes', 'The JSON API is on with an empty events.routes.auth_middleware: writes still answer 401 without a signed-in user, but no guard of yours runs before them.');
         }
 
         if (in_array('database', EventsConfig::notificationChannels(), true) && ! Schema::hasTable('notifications')) {

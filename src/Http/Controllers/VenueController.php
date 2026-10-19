@@ -44,7 +44,7 @@ final class VenueController extends Controller
 
     public function store(VenueRequest $request): JsonResponse
     {
-        $user = $this->user($request) ?? throw VenueNotFoundException::missing();
+        $user = $this->actor($request);
         $venue = $this->manager()->venues()->by($user)->create($request->toData($user));
 
         return new JsonResponse(['data' => (new VenueResource($venue))->resolve($request)], 201);
@@ -57,21 +57,21 @@ final class VenueController extends Controller
 
     public function update(VenueRequest $request, string $venue): JsonResponse
     {
-        $updated = $this->manager()->venues()->by($this->user($request))->update($this->venue($venue), $request->toUpdate());
+        $updated = $this->manager()->venues()->by($this->actor($request))->update($this->venue($venue), $request->toUpdate());
 
         return new JsonResponse(['data' => (new VenueResource($updated))->resolve($request)]);
     }
 
     public function destroy(Request $request, string $venue): Response
     {
-        $this->manager()->venues()->by($this->user($request))->delete($this->venue($venue));
+        $this->manager()->venues()->by($this->actor($request))->delete($this->venue($venue));
 
         return new Response(status: 204);
     }
 
     public function geocode(Request $request, string $venue): JsonResponse
     {
-        $geocoded = $this->manager()->venues()->by($this->user($request))->geocode($this->venue($venue), force: true);
+        $geocoded = $this->manager()->venues()->by($this->actor($request))->geocode($this->venue($venue), force: true);
 
         return new JsonResponse(['data' => (new VenueResource($geocoded))->resolve($request)]);
     }

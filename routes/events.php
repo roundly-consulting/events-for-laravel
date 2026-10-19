@@ -16,6 +16,7 @@ use RoundlyConsulting\Events\Http\Controllers\PosterController;
 use RoundlyConsulting\Events\Http\Controllers\TierController;
 use RoundlyConsulting\Events\Http\Controllers\VenueController;
 use RoundlyConsulting\Events\Http\Controllers\WaitlistController;
+use RoundlyConsulting\Events\Http\Middleware\RequireSignedInUser;
 use RoundlyConsulting\Events\Support\EventsConfig;
 
 /*
@@ -24,7 +25,8 @@ use RoundlyConsulting\Events\Support\EventsConfig;
 |--------------------------------------------------------------------------
 |
 | Loaded only with `events.routes.enabled` on. Reads allow guests (the visibility rule
-| applies: a hidden event is a 404); writes add `events.routes.auth_middleware`. `{event}` is
+| applies: a hidden event is a 404); writes add `events.routes.auth_middleware`, then refuse any
+| request without a signed-in Eloquent user (401) — even when that list is empty. `{event}` is
 | the uuid, so `/events/feed.ics` never reaches the show route.
 |
 */
@@ -54,8 +56,8 @@ Route::prefix(EventsConfig::routesPrefix())
             Route::post('event-invitations/decline', [InvitationResponseController::class, 'decline'])->name('invitations.decline');
         });
 
-        // Writes.
-        Route::middleware(EventsConfig::authMiddleware())->group(static function (): void {
+        // Writes: the host's auth middleware, then never without a signed-in user.
+        Route::middleware([...EventsConfig::authMiddleware(), RequireSignedInUser::class])->group(static function (): void {
             Route::post('events', [EventController::class, 'store'])->name('store');
 
             Route::prefix('events/{event}')->whereUuid('event')->group(static function (): void {

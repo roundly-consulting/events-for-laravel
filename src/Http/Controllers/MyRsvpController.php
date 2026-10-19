@@ -32,7 +32,7 @@ final class MyRsvpController extends Controller
     public function update(RsvpRequest $request, string $event): JsonResponse
     {
         $model = $this->event($request, $event);
-        $user = $this->user($request) ?? throw RsvpNotFoundException::missing();
+        $user = $this->actor($request);
         $pending = $this->manager()->for($model)->rsvp($user)->by($user);
 
         $rsvp = match ($request->response()) {
@@ -47,7 +47,7 @@ final class MyRsvpController extends Controller
     public function destroy(Request $request, string $event): JsonResponse
     {
         $model = $this->event($request, $event);
-        $user = $this->user($request) ?? throw RsvpNotFoundException::missing();
+        $user = $this->actor($request);
 
         if ($this->mine($request, $model) === null) {
             throw RsvpNotFoundException::missing();
@@ -73,9 +73,7 @@ final class MyRsvpController extends Controller
 
     private function mine(Request $request, Event $event): ?Rsvp
     {
-        $user = $this->user($request);
-
-        return $user === null ? null : $this->manager()->for($event)->attendees()->find($user);
+        return $this->manager()->for($event)->attendees()->find($this->actor($request));
     }
 
     /**

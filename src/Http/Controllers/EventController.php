@@ -45,7 +45,7 @@ final class EventController extends Controller
 
     public function store(StoreEventRequest $request): JsonResponse
     {
-        $user = $this->user($request) ?? throw EventNotFoundException::missing();
+        $user = $this->actor($request);
         $model = EventModels::event();
 
         $event = EventTransaction::run(new $model, function () use ($request, $user): Event {
@@ -106,7 +106,7 @@ final class EventController extends Controller
     {
         $model = $this->event($request, $event, withTrashed: true);
 
-        if (! EventManagers::allows($model, $this->user($request))) {
+        if (! EventManagers::allows($model, $this->actor($request))) {
             throw EventNotFoundException::missing();
         }
 

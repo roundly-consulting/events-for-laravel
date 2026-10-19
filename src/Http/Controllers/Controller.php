@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Events\Http\Controllers;
 
+use Illuminate\Auth\AuthenticationException;
 use Illuminate\Container\Container;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
@@ -23,7 +24,8 @@ use Throwable;
  * The API's controllers resolve events themselves — by uuid, through the model seam, with the
  * visibility rule applied: an event the caller may not see answers 404 exactly like a missing
  * one. Writes go through the facade's handle with the caller as the actor, so the policy, the
- * fake and the domain events apply. Package exceptions become `{message, code}`; the host's
+ * fake and the domain events apply — and a write never runs without a signed-in user: a missing
+ * user would make a trusted handle that skips the policy. Package exceptions become `{message, code}`; the host's
  * exception handler is never touched.
  *
  * @internal
@@ -55,6 +57,17 @@ abstract class Controller
     }
 
     /**
+     * The signed-in user a write runs as. No user, or a guard user that is not an Eloquent model:
+     * 401 (the host's handler renders it) — never a trusted, policy-free handle.
+     *
+     * @throws AuthenticationException
+     */
+    protected function actor(Request $request): Model
+    {
+        return $this->user($request) ?? throw new AuthenticationException;
+    }
+
+    /**
      * The event the caller may see. A malformed uuid, a missing, trashed or hidden event: 404.
      */
     protected function event(Request $request, string $uuid, bool $withTrashed = false): Event
@@ -80,7 +93,7 @@ abstract class Controller
 
     protected function handle(Request $request, Event $event): EventHandle
     {
-        return $this->manager()->for($event)->by($this->user($request));
+        return $this->manager()->for($event)->by($this->actor($request));
     }
 
     /**
