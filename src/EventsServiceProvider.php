@@ -8,6 +8,7 @@ use Illuminate\Contracts\Auth\Access\Gate;
 use Illuminate\Contracts\Events\Dispatcher;
 use RoundlyConsulting\Events\Contracts\CheckInCodes;
 use RoundlyConsulting\Events\Contracts\CollectsAdmissionPayment;
+use RoundlyConsulting\Events\Contracts\EventUrls;
 use RoundlyConsulting\Events\Enums\EventTagType;
 use RoundlyConsulting\Events\Listeners\OnEventTransitioned;
 use RoundlyConsulting\Events\Listeners\OnEventTransitioning;
@@ -17,9 +18,11 @@ use RoundlyConsulting\Events\Support\EventsConfig;
 use RoundlyConsulting\Events\Support\LifecycleCheck;
 use RoundlyConsulting\Events\Support\RandomCheckInCodes;
 use RoundlyConsulting\Events\Support\SqliteGeometry;
+use RoundlyConsulting\Events\Support\TemplateEventUrls;
 use RoundlyConsulting\Events\Support\TransitionNotes;
 use RoundlyConsulting\Lifecycle\Events\LifecycleTransitioned;
 use RoundlyConsulting\Lifecycle\Events\LifecycleTransitioning;
+use RoundlyConsulting\PackageToolkit\Concerns\RegistersBladeDirectives;
 use RoundlyConsulting\PackageToolkit\Concerns\RegistersBlueprintMacros;
 use RoundlyConsulting\PackageToolkit\Package;
 use RoundlyConsulting\PackageToolkit\PackageServiceProvider;
@@ -28,6 +31,7 @@ use Throwable;
 
 final class EventsServiceProvider extends PackageServiceProvider
 {
+    use RegistersBladeDirectives;
     use RegistersBlueprintMacros;
 
     public function configurePackage(Package $package): void
@@ -36,7 +40,8 @@ final class EventsServiceProvider extends PackageServiceProvider
             ->name('events')
             ->hasConfigFile()
             ->hasMigrations()
-            ->hasTranslations();
+            ->hasTranslations()
+            ->hasViews();
     }
 
     public function register(): void
@@ -46,6 +51,7 @@ final class EventsServiceProvider extends PackageServiceProvider
         $this->app->singleton(EventsManager::class);
         $this->bindFromConfig(CollectsAdmissionPayment::class, 'events.payments.collector', NoPaymentCollector::class);
         $this->app->bindIf(CheckInCodes::class, RandomCheckInCodes::class);
+        $this->bindFromConfig(EventUrls::class, 'events.urls.resolver', TemplateEventUrls::class);
         $this->app->singleton(LifecycleCheck::class);
         $this->app->singleton(SqliteGeometry::class);
         // Per request / job: what an action tells the lifecycle bridge about its transition.
@@ -66,6 +72,9 @@ final class EventsServiceProvider extends PackageServiceProvider
 
         $this->registerPolicies();
         $this->defineTagTypes();
+
+        // @eventJsonLd($event): the schema.org script tag, or nothing.
+        $this->registerBladeDirective('eventJsonLd', static fn (string $expression): string => "<?php echo ({$expression})->renderJsonLd(); ?>");
     }
 
     /**

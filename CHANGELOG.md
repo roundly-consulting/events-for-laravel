@@ -27,5 +27,6 @@ Initial public release.
 - Co-hosts (`hosts()`), organizer transfer, `Concerns\OrganizesEvents` and invite-only events: `invitations()->send()` mints a bearer token stored as a hash only, `Events::invitations()->accept()` / `decline()` answer from the link.
 - Categories and labels through tags-for-laravel: one curated, global category tree (`Events::categories()`, `->category()` / `->categorize()`, `inCategory()` with sub-categories) and free-form labels kept out of tags' JSON API (`->labels()`, `labelled()`), optionally per organizer.
 - Near me: `near($point, km: 25)`, `withDistance()` and `orderByDistance()` (events without a venue last), the same great-circle distance in SQL and PHP on MySQL and PostgreSQL.
+- Calendars and search engines: `.ics` files per event and for lists (`Events::for($event)->ics()`, `Events::ics()`), a public feed and a personal one (`Events::feeds()`, `$user->eventFeed()`), schema.org JSON-LD (`Events::jsonLd()`, `@eventJsonLd($event)`) and URL templates (`events.urls.*`, or your own `Contracts\EventUrls`). Join links reach only managers and going attendees.
 - A recording, still-performing `Events::fake()` with paired assertions, and Pest expectations (`toBeGoingTo`, `toBeWaitlistedFor`, `toBeCheckedInTo`).
 - English and Slovak translations.

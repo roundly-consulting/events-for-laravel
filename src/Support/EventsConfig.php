@@ -398,4 +398,88 @@ final class EventsConfig
 
         return $url;
     }
+
+    /**
+     * The event page template (`events.urls.event`), or null.
+     */
+    public static function eventUrl(): ?string
+    {
+        return self::urlTemplate(config('events.urls.event'), 'events.urls.event');
+    }
+
+    /**
+     * The uuid-only page template for unlisted and private events (`events.urls.event_link`).
+     */
+    public static function eventLinkUrl(): ?string
+    {
+        return self::urlTemplate(config('events.urls.event_link'), 'events.urls.event_link');
+    }
+
+    public static function invitationUrl(): ?string
+    {
+        return self::urlTemplate(config('events.urls.invitation'), 'events.urls.invitation');
+    }
+
+    public static function rsvpUrl(): ?string
+    {
+        return self::urlTemplate(config('events.urls.rsvp'), 'events.urls.rsvp');
+    }
+
+    public static function jsonLdType(): string
+    {
+        $type = Config::string('events.seo.json_ld.type', 'Event');
+
+        if (preg_match('/^[A-Za-z]+$/', $type) !== 1) {
+            throw InvalidEventsConfigurationException::invalidChoice('events.seo.json_ld.type', $type, 'a schema.org type such as Event or MusicEvent');
+        }
+
+        return $type;
+    }
+
+    public static function jsonLdForUnlisted(): bool
+    {
+        return Config::boolean('events.seo.json_ld.unlisted', false);
+    }
+
+    public static function jsonLdExposesOnlineUrl(): bool
+    {
+        return Config::boolean('events.seo.json_ld.expose_online_url', false);
+    }
+
+    public static function jsonLdOrganizerType(): string
+    {
+        $type = Config::string('events.seo.json_ld.organizer_type', 'Organization');
+
+        if (! in_array($type, ['Organization', 'Person'], true)) {
+            throw InvalidEventsConfigurationException::invalidChoice('events.seo.json_ld.organizer_type', $type, 'Organization, Person');
+        }
+
+        return $type;
+    }
+
+    public static function feedKeepCancelledFor(): CarbonInterval
+    {
+        return self::duration(Config::string('events.feeds.keep_cancelled_for', 'P30D'), 'events.feeds.keep_cancelled_for');
+    }
+
+    public static function feedMaxEvents(): int
+    {
+        return Config::integer('events.feeds.max_events', 500, min: 1, max: 10_000);
+    }
+
+    public static function feedName(): string
+    {
+        return self::nullableString(config('events.feeds.name'), 'events.feeds.name') ?? 'Events';
+    }
+
+    private static function urlTemplate(mixed $value, string $key): ?string
+    {
+        $url = self::nullableString($value, $key);
+
+        if ($url !== null && ! in_array(strtolower((string) parse_url(str_replace(['{', '}'], '', $url), PHP_URL_SCHEME)), ['http', 'https'], true)) {
+            throw InvalidEventsConfigurationException::invalidUrlTemplate($key);
+        }
+
+        return $url;
+    }
 }

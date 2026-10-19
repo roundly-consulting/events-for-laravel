@@ -23,7 +23,7 @@ final class VenueInput
      */
     public static function name(array|string $name): array
     {
-        $map = Translatable::fromInput($name);
+        $map = Translatable::fromInput(Text::line($name));
 
         if ($map === []) {
             throw InvalidVenueException::nameRequired();

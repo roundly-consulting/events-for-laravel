@@ -10,6 +10,7 @@ use RoundlyConsulting\Events\Models\Venue;
 use RoundlyConsulting\Events\Payments\NoPaymentCollector;
 use RoundlyConsulting\Events\Policies\EventPolicy;
 use RoundlyConsulting\Events\Policies\VenuePolicy;
+use RoundlyConsulting\Events\Support\TemplateEventUrls;
 
 return [
 
@@ -244,6 +245,63 @@ return [
             'landscape' => [1200, 900],
             'wide' => [1920, 1080],
         ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | URLs
+    |--------------------------------------------------------------------------
+    |
+    | Where your app shows an event, an invitation and an attendee's ticket — used in JSON-LD,
+    | calendar files and notification buttons. Templates take `{uuid}`, `{slug}` and `{locale}`
+    | (events), `{token}` (invitations) and `{uuid}` + `{rsvp}` (tickets); blank means no link.
+    | Unlisted and private events are reached by uuid only: they use `event_link`, and never a
+    | `{slug}` template. Bind your own `Contracts\EventUrls` in `resolver` to call `route()`.
+    |
+    */
+
+    'urls' => [
+        'resolver' => TemplateEventUrls::class,
+        'event' => env('EVENTS_URL'),
+        'event_link' => env('EVENTS_LINK_URL'),
+        'invitation' => env('EVENTS_INVITATION_URL'),
+        'rsvp' => env('EVENTS_RSVP_URL'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Search engines (schema.org JSON-LD)
+    |--------------------------------------------------------------------------
+    |
+    | `@eventJsonLd($event)` renders structured data for public, announced events. Unlisted
+    | events need `unlisted` on; private events never get it. The join link stays out unless
+    | `expose_online_url` is on (the event page URL is used instead).
+    |
+    */
+
+    'seo' => [
+        'json_ld' => [
+            'type' => 'Event',
+            'unlisted' => 'off',
+            'expose_online_url' => 'off',
+            'organizer_type' => 'Organization',
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Calendar feeds (.ics)
+    |--------------------------------------------------------------------------
+    |
+    | The public feed lists announced, listed public events and keeps cancelled ones for
+    | `keep_cancelled_for`, so subscribed calendars receive the cancellation.
+    |
+    */
+
+    'feeds' => [
+        'keep_cancelled_for' => 'P30D',
+        'max_events' => 500,
+        'name' => env('APP_NAME', 'Events'),
     ],
 
     /*

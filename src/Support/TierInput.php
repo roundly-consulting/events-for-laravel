@@ -29,7 +29,7 @@ final class TierInput
      */
     public static function name(array|string $name): array
     {
-        $map = Translatable::fromInput($name);
+        $map = Translatable::fromInput(Text::line($name));
 
         if ($map === []) {
             throw InvalidTierException::nameRequired();
@@ -44,7 +44,7 @@ final class TierInput
      */
     public static function description(array|string|null $description): ?array
     {
-        $map = $description === null ? [] : Translatable::fromInput($description);
+        $map = $description === null ? [] : Translatable::fromInput(Text::block($description));
 
         return $map === [] ? null : $map;
     }

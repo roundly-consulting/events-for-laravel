@@ -18,7 +18,11 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Query\Builder as QueryBuilder;
+use Illuminate\Support\Facades\App;
+use Illuminate\Support\Facades\View;
+use Illuminate\Support\HtmlString;
 use Illuminate\Support\Str;
+use RoundlyConsulting\Events\Calendar\IcsCalendar;
 use RoundlyConsulting\Events\Casts\UtcDateTime;
 use RoundlyConsulting\Events\Concerns\HasConfigurableKey;
 use RoundlyConsulting\Events\Concerns\StoresUtcTimestamps;
@@ -29,6 +33,7 @@ use RoundlyConsulting\Events\Enums\EventTagType;
 use RoundlyConsulting\Events\Enums\GuestList;
 use RoundlyConsulting\Events\Enums\RsvpStatus;
 use RoundlyConsulting\Events\Enums\Visibility;
+use RoundlyConsulting\Events\EventsManager;
 use RoundlyConsulting\Events\Exceptions\InvalidEventException;
 use RoundlyConsulting\Events\Support\Clock;
 use RoundlyConsulting\Events\Support\DistanceExpression;
@@ -431,6 +436,35 @@ class Event extends Model implements HasMedia, LifecycleSubject, Sluggable, Tagg
     public function posterUrl(string $variant = ''): ?string
     {
         return Posters::url($this, $variant);
+    }
+
+    /**
+     * The event as a calendar file — through the manager, so the viewer rule for the join link
+     * applies.
+     */
+    public function toIcs(?Model $viewer = null): IcsCalendar
+    {
+        return App::make(EventsManager::class)->for($this)->ics($viewer);
+    }
+
+    /**
+     * schema.org structured data, or null where search engines get none.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function toJsonLd(): ?array
+    {
+        return App::make(EventsManager::class)->jsonLd($this);
+    }
+
+    /**
+     * The `<script type="application/ld+json">` tag, or an empty string.
+     */
+    public function renderJsonLd(): HtmlString
+    {
+        $data = $this->toJsonLd();
+
+        return new HtmlString($data === null ? '' : View::make('events::json-ld', ['data' => $data])->render());
     }
 
     // Discovery scopes. The API filters are built on them, so PHP and HTTP filter identically.

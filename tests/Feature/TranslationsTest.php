@@ -8,7 +8,7 @@ use Illuminate\Support\Arr;
  * English and Slovak ship the same keys and placeholders in every file, and the Slovak lines
  * resolve through the package namespace.
  */
-$files = ['messages', 'enums', 'tags'];
+$files = ['messages', 'enums', 'tags', 'feeds'];
 
 /**
  * @return array<string, string>

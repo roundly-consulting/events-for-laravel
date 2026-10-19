@@ -31,6 +31,16 @@ class User extends Authenticatable implements Organizer
 
     protected $guarded = [];
 
+    /**
+     * The optional Organizer method: the calendar ORGANIZER line's address.
+     */
+    public function eventOrganizerEmail(): ?string
+    {
+        $email = $this->getAttribute('email');
+
+        return is_string($email) ? $email : null;
+    }
+
     protected static function newFactory(): UserFactory
     {
         return UserFactory::new();

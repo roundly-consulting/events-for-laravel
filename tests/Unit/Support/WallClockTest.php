@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Carbon\CarbonImmutable;
 use RoundlyConsulting\Events\Exceptions\InvalidEventScheduleException;
+use RoundlyConsulting\Events\Support\Text;
 use RoundlyConsulting\Events\Support\WallClock;
 
 test('wall_clock_input_is_event_local', function (): void {
@@ -66,4 +67,9 @@ it('finds the first instant of a local day, even when midnight does not exist', 
         ->and(WallClock::startOfDay('2026-03-08', 'America/Havana')->toIso8601String())->toBe('2026-03-08T05:00:00+00:00');
 
     expect(fn () => WallClock::startOfDay('2026-02-30', 'Europe/Bratislava'))->toThrow(InvalidEventScheduleException::class);
+});
+
+it('keeps control characters out of stored text', function (): void {
+    expect(Text::line("Jazz\r\nNight\x00 "))->toBe('Jazz Night')
+        ->and(Text::block(['en' => "Line\nTwo\x00\x07\tEnd"]))->toBe(['en' => "Line\nTwo\tEnd"]);
 });

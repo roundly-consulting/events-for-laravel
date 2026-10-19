@@ -17,6 +17,8 @@ use RoundlyConsulting\Events\Actions\Events\CreateEventAction;
 use RoundlyConsulting\Events\Actions\Internal\ReleaseAttendeeRsvpsAction;
 use RoundlyConsulting\Events\Actions\Maintenance\SweepEventsAction;
 use RoundlyConsulting\Events\Builders\EventBuilder;
+use RoundlyConsulting\Events\Calendar\Feeds;
+use RoundlyConsulting\Events\Calendar\IcsCalendar;
 use RoundlyConsulting\Events\Contracts\CheckInCodes;
 use RoundlyConsulting\Events\DataTransferObjects\CheckInResult;
 use RoundlyConsulting\Events\DataTransferObjects\CreateEventData;
@@ -27,9 +29,11 @@ use RoundlyConsulting\Events\Enums\EventTagType;
 use RoundlyConsulting\Events\Exceptions\EventNotFoundException;
 use RoundlyConsulting\Events\Handles\EventHandle;
 use RoundlyConsulting\Events\Models\Event;
+use RoundlyConsulting\Events\Seo\EventJsonLd;
 use RoundlyConsulting\Events\Support\CheckInQr;
 use RoundlyConsulting\Events\Support\EventModels;
 use RoundlyConsulting\Events\Support\EventVisibility;
+use RoundlyConsulting\Events\Support\Ics\IcsWriter;
 use RoundlyConsulting\Events\Support\InvitationTokens;
 use RoundlyConsulting\Tags\Handles\TypeTags;
 use RoundlyConsulting\Tags\TagsManager;
@@ -199,6 +203,45 @@ class EventsManager
             static fn (CheckInByCodeAction $action): CheckInResult => $action->execute($code, null, $by, $guests, $ignoreWindow),
             ['actor' => $by, 'guests' => $guests],
         );
+    }
+
+    /**
+     * One calendar file for a list of events, skipping every event `$viewer` may not see (null =
+     * a guest: public, announced events only) — so a raw query result can never export a private
+     * or draft event. Join links go in only where `$viewer` may see them.
+     *
+     * @param  iterable<Event>  $events
+     */
+    public function ics(iterable $events, ?Model $viewer = null): IcsCalendar
+    {
+        $visible = [];
+
+        foreach ($events as $event) {
+            if (EventVisibility::canView($event, $viewer)) {
+                $visible[] = $event;
+            }
+        }
+
+        return new IcsCalendar($this->container->make(IcsWriter::class)->write($visible, $viewer), 'events.ics');
+    }
+
+    /**
+     * Subscribable calendars: `public(EventFeedQuery)` and an attendee's own `for($attendee)`.
+     */
+    public function feeds(): Feeds
+    {
+        return $this->container->make(Feeds::class);
+    }
+
+    /**
+     * The event's schema.org structured data, or null where search engines get none (drafts,
+     * private events, unlisted ones unless enabled).
+     *
+     * @return array<string, mixed>|null
+     */
+    public function jsonLd(Event $event): ?array
+    {
+        return $this->container->make(EventJsonLd::class)->for($event);
     }
 
     /**

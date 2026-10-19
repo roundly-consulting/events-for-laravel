@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
 use RoundlyConsulting\Events\Builders\PendingRsvp;
+use RoundlyConsulting\Events\Calendar\IcsCalendar;
 use RoundlyConsulting\Events\Enums\RsvpStatus;
 use RoundlyConsulting\Events\EventsManager;
 use RoundlyConsulting\Events\Models\Event;
@@ -79,6 +80,15 @@ trait AttendsEvents
     public function rsvpFor(Event $event): ?Rsvp
     {
         return $this->eventRsvps()->where('event_id', $event->getKey())->first();
+    }
+
+    /**
+     * The events this attendee is going to, as a subscribable calendar (private ones only with
+     * `$includePrivate`). Serve it behind your own token URL.
+     */
+    public function eventFeed(bool $includePrivate = false): IcsCalendar
+    {
+        return app(EventsManager::class)->feeds()->for($this, $includePrivate);
     }
 
     /**

@@ -31,7 +31,7 @@ final class EventInput
      */
     public static function title(array|string $title): array
     {
-        $map = Translatable::fromInput(is_string($title) ? trim($title) : array_map(trim(...), $title));
+        $map = Translatable::fromInput(Text::line($title));
 
         if ($map === []) {
             throw InvalidEventException::titleRequired();
@@ -56,7 +56,7 @@ final class EventInput
             return null;
         }
 
-        $map = Translatable::fromInput($description);
+        $map = Translatable::fromInput(Text::block($description));
 
         foreach ($map as $line) {
             if (mb_strlen($line) > self::DESCRIPTION_MAX) {

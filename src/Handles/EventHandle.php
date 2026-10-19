@@ -25,6 +25,7 @@ use RoundlyConsulting\Events\Actions\Events\UpdateEventAction;
 use RoundlyConsulting\Events\Actions\Tags\CategorizeEventAction;
 use RoundlyConsulting\Events\Builders\EventEditor;
 use RoundlyConsulting\Events\Builders\PendingRsvp;
+use RoundlyConsulting\Events\Calendar\IcsCalendar;
 use RoundlyConsulting\Events\Contracts\EventState;
 use RoundlyConsulting\Events\Contracts\Organizer;
 use RoundlyConsulting\Events\DataTransferObjects\CheckInResult;
@@ -32,11 +33,13 @@ use RoundlyConsulting\Events\DataTransferObjects\EventCounts;
 use RoundlyConsulting\Events\DataTransferObjects\UpdateEventData;
 use RoundlyConsulting\Events\Enums\EventOperation;
 use RoundlyConsulting\Events\Enums\EventPhase;
+use RoundlyConsulting\Events\Enums\Visibility;
 use RoundlyConsulting\Events\EventsManager;
 use RoundlyConsulting\Events\Exceptions\InvalidEventLifecycleException;
 use RoundlyConsulting\Events\Models\Event;
 use RoundlyConsulting\Events\Support\EventAuthorization;
 use RoundlyConsulting\Events\Support\EventsConfig;
+use RoundlyConsulting\Events\Support\Ics\IcsWriter;
 use RoundlyConsulting\Lifecycle\DataTransferObjects\AvailableTransition;
 use RoundlyConsulting\Lifecycle\DataTransferObjects\TransitionResult;
 use RoundlyConsulting\Lifecycle\LifecycleHandle;
@@ -449,6 +452,31 @@ final readonly class EventHandle
         );
 
         return $this;
+    }
+
+    /**
+     * The event as a calendar file (`return Events::for($event)->ics($request->user());` answers
+     * `text/calendar`; `(string)` gives the text). The join link goes in only for a `$viewer`
+     * who may see it; a draft has no entry. With an actor, `view` is checked.
+     */
+    public function ics(?Model $viewer = null): IcsCalendar
+    {
+        $this->authorize('view');
+        $slug = $this->event->slug;
+        $filename = ($this->event->visibility === Visibility::Public && is_string($slug) && $slug !== '' ? $slug : $this->event->uuid).'.ics';
+
+        return new IcsCalendar(App::make(IcsWriter::class)->write([$this->event], $viewer ?? $this->actor), $filename);
+    }
+
+    /**
+     * The event's schema.org structured data, or null (drafts, private events, unlisted ones
+     * unless `events.seo.json_ld.unlisted`).
+     *
+     * @return array<string, mixed>|null
+     */
+    public function jsonLd(): ?array
+    {
+        return $this->manager->jsonLd($this->event);
     }
 
     /**
