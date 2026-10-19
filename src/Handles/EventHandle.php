@@ -35,11 +35,13 @@ use RoundlyConsulting\Events\Enums\EventOperation;
 use RoundlyConsulting\Events\Enums\EventPhase;
 use RoundlyConsulting\Events\Enums\Visibility;
 use RoundlyConsulting\Events\EventsManager;
+use RoundlyConsulting\Events\Exceptions\EventNotFoundException;
 use RoundlyConsulting\Events\Exceptions\InvalidEventLifecycleException;
 use RoundlyConsulting\Events\Lifecycle\RescheduledThroughEvents;
 use RoundlyConsulting\Events\Models\Event;
 use RoundlyConsulting\Events\Support\EventAuthorization;
 use RoundlyConsulting\Events\Support\EventsConfig;
+use RoundlyConsulting\Events\Support\EventVisibility;
 use RoundlyConsulting\Events\Support\Ics\IcsWriter;
 use RoundlyConsulting\Lifecycle\DataTransferObjects\AvailableTransition;
 use RoundlyConsulting\Lifecycle\DataTransferObjects\Denial;
@@ -463,12 +465,19 @@ final readonly class EventHandle
 
     /**
      * The event as a calendar file (`return Events::for($event)->ics($request->user());` answers
-     * `text/calendar`; `(string)` gives the text). The join link goes in only for a `$viewer`
-     * who may see it; a draft has no entry. With an actor, `view` is checked.
+     * `text/calendar`; `(string)` gives the text). A `$viewer` who may not see the event gets the
+     * uniform {@see EventNotFoundException} — the same rule as `Events::ics($events, $viewer)`.
+     * The join link goes in only for a viewer who may see it; a draft has no entry. With an
+     * actor, `view` is checked. No viewer and no actor is trusted PHP: the event, never the link.
      */
     public function ics(?Model $viewer = null): IcsCalendar
     {
         $this->authorize('view');
+
+        if ($viewer !== null && ! EventVisibility::canView($this->event, $viewer)) {
+            throw EventNotFoundException::missing();
+        }
+
         $slug = $this->event->slug;
         $filename = ($this->event->visibility === Visibility::Public && is_string($slug) && $slug !== '' ? $slug : $this->event->uuid).'.ics';
 

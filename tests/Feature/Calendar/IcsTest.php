@@ -5,6 +5,7 @@ declare(strict_types=1);
 use RoundlyConsulting\Events\DataTransferObjects\EventFeedQuery;
 use RoundlyConsulting\Events\DataTransferObjects\UpdateEventData;
 use RoundlyConsulting\Events\Enums\Visibility;
+use RoundlyConsulting\Events\Exceptions\EventNotFoundException;
 use RoundlyConsulting\Events\Facades\Events;
 use RoundlyConsulting\Events\Models\Event;
 use RoundlyConsulting\Events\Models\EventInvitation;
@@ -197,4 +198,28 @@ test('calendar_status_and_sequence_follow_the_lifecycle', function (): void {
     Events::for($event)->cancel('Flood');
     expect($vevent()['STATUS'])->toBe(['CANCELLED'])
         ->and((int) $vevent()['SEQUENCE'][0])->toBe($sequence + 1);
+});
+
+test('a_single_event_calendar_refuses_a_viewer_who_cannot_see_it', function (): void {
+    $event = Scenarios::event(organizer: $this->organizer);
+    Events::for($event)->update(new UpdateEventData(visibility: Visibility::Private, title: ['en' => 'Board dinner']));
+    $stranger = User::factory()->create();
+    $invitee = User::factory()->create();
+    EventInvitation::factory()->for($event)->invitee($invitee)->create();
+
+    // One rule for both forms (REPRO-7): a given viewer who cannot see the event gets nothing.
+    expect(fn () => Events::for($event->fresh() ?? $event)->ics($stranger))->toThrow(EventNotFoundException::class)
+        ->and((string) Events::ics([$event->fresh()], $stranger))->not->toContain('Board dinner')
+        ->and((string) Events::for($event->fresh() ?? $event)->ics($invitee))->toContain('Board dinner')
+        ->and((string) Events::for($event->fresh() ?? $event)->ics($this->organizer))->toContain('Board dinner');
+});
+
+test('a_single_event_calendar_without_a_viewer_never_carries_the_join_link', function (): void {
+    $event = Event::factory()->online('https://meet.example.com/secret-room')->published()->create();
+    $attendee = User::factory()->create();
+    Events::for($event)->rsvp($attendee)->going();
+
+    // Trusted PHP with no viewer renders the event, but never the link.
+    expect((string) Events::for($event)->ics())->toContain($event->uuid)->not->toContain('secret-room')
+        ->and((string) Events::for($event)->ics($attendee))->toContain('secret-room');
 });
