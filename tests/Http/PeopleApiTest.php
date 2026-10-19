@@ -210,3 +210,21 @@ test('a guest model invitee answers over the api signed out', function (): void 
     guest();
     $this->postJson('/api/event-invitations/accept', ['token' => $token])->assertOk()->assertJsonPath('data.status', 'going');
 });
+
+test('attendee_update_is_all_or_nothing', function (): void {
+    Events::for($this->event)->update(new UpdateEventData(capacity: 10));
+    $a = Events::for($this->event)->tiers()->add('Standing', key: 'standing');
+    Events::for($this->event)->tiers()->make('Seated')->key('seated')->perRsvp(max: 2)->create();
+    $rsvp = Events::for($this->event)->rsvp($this->attendee)->going(tier: 'standing');
+
+    // The ticket type change succeeds, the guests change is refused: nothing changes.
+    $this->actingAs($this->organizer)->patchJson("/api/events/{$this->event->uuid}/attendees/{$rsvp->getKey()}", ['tier' => 'seated', 'guests' => 2])
+        ->assertStatus(422)->assertJsonPath('code', 'invalid_guest_count');
+
+    expect($rsvp->fresh()?->tier_id)->toBe($a->getKey())
+        ->and($rsvp->fresh()?->guests)->toBe(0);
+
+    // Both valid: both apply.
+    $this->actingAs($this->organizer)->patchJson("/api/events/{$this->event->uuid}/attendees/{$rsvp->getKey()}", ['tier' => 'seated', 'guests' => 1])
+        ->assertOk()->assertJsonPath('data.guests', 1);
+});

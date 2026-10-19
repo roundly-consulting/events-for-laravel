@@ -19,6 +19,7 @@ use RoundlyConsulting\Events\Http\Resources\RsvpResource;
 use RoundlyConsulting\Events\Models\Event;
 use RoundlyConsulting\Events\Models\Rsvp;
 use RoundlyConsulting\Events\Support\EventManagers;
+use RoundlyConsulting\Events\Support\EventTransaction;
 
 /**
  * The guest list. Managers see every RSVP with its check-in record (never the codes); others
@@ -76,13 +77,18 @@ final class AttendeeController extends Controller
         $record = $this->rsvp($model, $rsvp);
         $attendees = $this->handle($request, $model)->attendees();
 
-        if ($request->tier() !== null) {
-            $record = $attendees->changeTier($record, $request->tier());
-        }
+        // All or nothing: both changes lock the event row first, and nest as savepoints.
+        $record = EventTransaction::run($model, static function () use ($request, $attendees, $record): Rsvp {
+            if ($request->tier() !== null) {
+                $record = $attendees->changeTier($record, $request->tier());
+            }
 
-        if ($request->guests() !== null) {
-            $record = $attendees->changeGuests($record, $request->guests());
-        }
+            if ($request->guests() !== null) {
+                $record = $attendees->changeGuests($record, $request->guests());
+            }
+
+            return $record;
+        });
 
         return new JsonResponse(['data' => $this->render($request, $model, $record)]);
     }
