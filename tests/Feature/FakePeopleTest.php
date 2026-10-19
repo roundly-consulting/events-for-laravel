@@ -72,8 +72,11 @@ test('expectations_pass_and_fail', function (): void {
 test('fake_naming_rule_is_pinned', function (): void {
     // Every assert<Verb> has assertNothing<Verb>; every assert<Noun><Verb> has assertNo<Noun><Verb>.
     $methods = array_map(static fn (ReflectionMethod $method): string => $method->getName(), (new ReflectionClass(EventsFake::class))->getMethods(ReflectionMethod::IS_PUBLIC));
+    // The generic pair is the one exception: assertPerformed ↔ assertNotPerformed.
+    expect($methods)->toContain('assertPerformed', 'assertNotPerformed');
     $positives = array_filter($methods, static fn (string $name): bool => str_starts_with($name, 'assert')
-        && ! str_starts_with($name, 'assertNothing') && ! preg_match('/^assertNo[A-Z]/', $name));
+        && ! str_starts_with($name, 'assertNothing') && ! preg_match('/^assertNo[A-Z]/', $name)
+        && ! in_array($name, ['assertPerformed', 'assertNotPerformed'], true));
 
     expect($positives)->not->toBeEmpty();
 
@@ -85,5 +88,6 @@ test('fake_naming_rule_is_pinned', function (): void {
     }
 
     // Nouns take `No`, verbs take `Nothing`.
-    expect($methods)->toContain('assertNoVenueCreated', 'assertNoTierCreated', 'assertNoCoHostAdded', 'assertNoPaymentConfirmed', 'assertNothingRsvped', 'assertNothingCheckedIn');
+    expect($methods)->toContain('assertNoVenueCreated', 'assertNoTierCreated', 'assertNoCoHostAdded', 'assertNoPaymentConfirmed', 'assertNothingRsvped', 'assertNothingCheckedIn',
+        'assertNothingDeleted', 'assertNoPosterChanged', 'assertNoTiersReordered', 'assertNoAttendeeForgotten', 'assertNoInvitationAnswered');
 });

@@ -278,13 +278,18 @@ class EventsManager
 
     /**
      * A deleted attendee's RSVPs give their seats back and are removed — the `AttendsEvents`
-     * deletion hook.
+     * deletion hook. Recorded by the fake like every other write.
      *
      * @internal
      */
     public function forgetAttendee(Model $attendee): int
     {
-        return $this->container()->make(ReleaseAttendeeRsvpsAction::class)->execute($attendee);
+        return $this->perform(
+            EventOperation::ForgetAttendee,
+            ReleaseAttendeeRsvpsAction::class,
+            static fn (ReleaseAttendeeRsvpsAction $action): int => $action->execute($attendee),
+            ['attendee' => $attendee],
+        );
     }
 
     /**

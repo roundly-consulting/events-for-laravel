@@ -11,12 +11,14 @@ use PHPUnit\Framework\Assert as PHPUnit;
 use RoundlyConsulting\Events\DataTransferObjects\CheckInResult;
 use RoundlyConsulting\Events\DataTransferObjects\UpdateEventData;
 use RoundlyConsulting\Events\Enums\EventOperation;
+use RoundlyConsulting\Events\Enums\RsvpResponse;
 use RoundlyConsulting\Events\Enums\RsvpStatus;
 use RoundlyConsulting\Events\EventsManager;
 use RoundlyConsulting\Events\Models\AdmissionTier;
 use RoundlyConsulting\Events\Models\Event;
 use RoundlyConsulting\Events\Models\Rsvp;
 use RoundlyConsulting\Events\Models\Venue;
+use RoundlyConsulting\Events\Support\EventModels;
 use RoundlyConsulting\Events\Support\NotGiven;
 use RoundlyConsulting\Tags\Models\Tag;
 
@@ -27,7 +29,8 @@ use RoundlyConsulting\Tags\Models\Tag;
  * A call that throws records nothing.
  *
  * Assertions pair up: `assert<Verb>()` with `assertNothing<Verb>()`, `assert<Noun><Verb>()` with
- * `assertNo<Noun><Verb>()`.
+ * `assertNo<Noun><Verb>()` — one pair for every {@see EventOperation} — plus the generic
+ * `assertPerformed()` / `assertNotPerformed()`.
  */
 final class EventsFake extends EventsManager
 {
@@ -65,6 +68,21 @@ final class EventsFake extends EventsManager
             $this->recorded,
             static fn (RecordedEventOperation $recorded): bool => $operation === null || $recorded->operation === $operation,
         ));
+    }
+
+    /**
+     * An operation of this kind was recorded — and, with `$matches`, one it accepts.
+     *
+     * @param  (Closure(RecordedEventOperation): bool)|null  $matches
+     */
+    public function assertPerformed(EventOperation $operation, ?Closure $matches = null): void
+    {
+        $this->assertRecorded($operation, $matches ?? static fn (): bool => true);
+    }
+
+    public function assertNotPerformed(EventOperation $operation): void
+    {
+        $this->assertNotRecorded($operation);
     }
 
     public function assertNothingHappened(): void
@@ -178,6 +196,88 @@ final class EventsFake extends EventsManager
         $this->assertNotRecorded(EventOperation::Complete);
     }
 
+    public function assertDeleted(?Event $event = null): void
+    {
+        $this->assertRecorded(EventOperation::Delete, static fn (RecordedEventOperation $recorded): bool => $recorded->concerns($event));
+    }
+
+    public function assertNothingDeleted(): void
+    {
+        $this->assertNotRecorded(EventOperation::Delete);
+    }
+
+    public function assertRestored(?Event $event = null): void
+    {
+        $this->assertRecorded(EventOperation::Restore, static fn (RecordedEventOperation $recorded): bool => $recorded->concerns($event));
+    }
+
+    public function assertNothingRestored(): void
+    {
+        $this->assertNotRecorded(EventOperation::Restore);
+    }
+
+    public function assertUnpublished(?Event $event = null): void
+    {
+        $this->assertRecorded(EventOperation::Unpublish, static fn (RecordedEventOperation $recorded): bool => $recorded->concerns($event));
+    }
+
+    public function assertNothingUnpublished(): void
+    {
+        $this->assertNotRecorded(EventOperation::Unpublish);
+    }
+
+    /**
+     * A transition of `$event` applied by name (`Events::for($event)->transition($name)`).
+     */
+    public function assertTransitioned(?Event $event = null, ?string $name = null): void
+    {
+        $this->assertRecorded(EventOperation::Transition, static fn (RecordedEventOperation $recorded): bool => $recorded->concerns($event)
+            && ($name === null || ($recorded->context['transition'] ?? null) === $name));
+    }
+
+    public function assertNothingTransitioned(): void
+    {
+        $this->assertNotRecorded(EventOperation::Transition);
+    }
+
+    public function assertMovedOnline(?Event $event = null): void
+    {
+        $this->assertRecorded(EventOperation::MoveOnline, static fn (RecordedEventOperation $recorded): bool => $recorded->concerns($event));
+    }
+
+    public function assertNothingMovedOnline(): void
+    {
+        $this->assertNotRecorded(EventOperation::MoveOnline);
+    }
+
+    /**
+     * `$event` handed to the organizer `$to` (each null means any).
+     */
+    public function assertTransferred(?Event $event = null, ?Model $to = null): void
+    {
+        $this->assertRecorded(EventOperation::TransferOrganizer, static fn (RecordedEventOperation $recorded): bool => $recorded->concerns($event)
+            && ($to === null || $recorded->model('organizer')?->is($to) === true));
+    }
+
+    public function assertNothingTransferred(): void
+    {
+        $this->assertNotRecorded(EventOperation::TransferOrganizer);
+    }
+
+    /**
+     * The poster of `$event` set or replaced (`$removed: false`) or removed (`true`); null = either.
+     */
+    public function assertPosterChanged(?Event $event = null, ?bool $removed = null): void
+    {
+        $this->assertRecorded(EventOperation::SetPoster, static fn (RecordedEventOperation $recorded): bool => $recorded->concerns($event)
+            && ($removed === null || ($recorded->context['removed'] ?? null) === $removed));
+    }
+
+    public function assertNoPosterChanged(): void
+    {
+        $this->assertNotRecorded(EventOperation::SetPoster);
+    }
+
     // Category & labels ------------------------------------------------------------------------
 
     /**
@@ -203,28 +303,30 @@ final class EventsFake extends EventsManager
      */
     public function assertLabelled(?Event $event = null, ?array $labels = null): void
     {
-        $this->assertRecordedAny([EventOperation::AttachLabels, EventOperation::SyncLabels], static function (RecordedEventOperation $recorded) use ($event, $labels): bool {
-            if (! $recorded->concerns($event)) {
-                return false;
-            }
-
-            $given = $recorded->context['labels'] ?? [];
-            $given = is_iterable($given) ? [...$given] : [$given];
-
-            foreach ($labels ?? [] as $label) {
-                if (array_filter($given, static fn (mixed $passed): bool => self::sameTag($passed, $label)) === []) {
-                    return false;
-                }
-            }
-
-            return true;
-        });
+        $this->assertRecordedAny([EventOperation::AttachLabels, EventOperation::SyncLabels], static fn (RecordedEventOperation $recorded): bool => $recorded->concerns($event)
+            && self::passedEveryTag($recorded, $labels));
     }
 
     public function assertNothingLabelled(): void
     {
         $this->assertNotRecorded(EventOperation::AttachLabels);
         $this->assertNotRecorded(EventOperation::SyncLabels);
+    }
+
+    /**
+     * Labels detached from `$event` (null = any), including every one of `$labels` when given.
+     *
+     * @param  list<Tag|int|string>|null  $labels
+     */
+    public function assertUnlabelled(?Event $event = null, ?array $labels = null): void
+    {
+        $this->assertRecorded(EventOperation::DetachLabels, static fn (RecordedEventOperation $recorded): bool => $recorded->concerns($event)
+            && self::passedEveryTag($recorded, $labels));
+    }
+
+    public function assertNothingUnlabelled(): void
+    {
+        $this->assertNotRecorded(EventOperation::DetachLabels);
     }
 
     // Venues ---------------------------------------------------------------------------------
@@ -243,6 +345,58 @@ final class EventsFake extends EventsManager
         $this->assertNotRecorded(EventOperation::CreateVenue);
     }
 
+    /**
+     * @param  (Closure(Venue): bool)|null  $callback
+     */
+    public function assertVenueUpdated(?Closure $callback = null): void
+    {
+        $this->assertRecorded(EventOperation::UpdateVenue, self::venueMatches($callback));
+    }
+
+    public function assertNoVenueUpdated(): void
+    {
+        $this->assertNotRecorded(EventOperation::UpdateVenue);
+    }
+
+    /**
+     * @param  (Closure(Venue): bool)|null  $callback
+     */
+    public function assertVenueDeleted(?Closure $callback = null): void
+    {
+        $this->assertRecorded(EventOperation::DeleteVenue, self::venueMatches($callback));
+    }
+
+    public function assertNoVenueDeleted(): void
+    {
+        $this->assertNotRecorded(EventOperation::DeleteVenue);
+    }
+
+    /**
+     * @param  (Closure(Venue): bool)|null  $callback
+     */
+    public function assertVenueRestored(?Closure $callback = null): void
+    {
+        $this->assertRecorded(EventOperation::RestoreVenue, self::venueMatches($callback));
+    }
+
+    public function assertNoVenueRestored(): void
+    {
+        $this->assertNotRecorded(EventOperation::RestoreVenue);
+    }
+
+    /**
+     * @param  (Closure(Venue): bool)|null  $callback
+     */
+    public function assertVenueGeocoded(?Closure $callback = null): void
+    {
+        $this->assertRecorded(EventOperation::GeocodeVenue, self::venueMatches($callback));
+    }
+
+    public function assertNoVenueGeocoded(): void
+    {
+        $this->assertNotRecorded(EventOperation::GeocodeVenue);
+    }
+
     // Ticket types ---------------------------------------------------------------------------
 
     /**
@@ -257,6 +411,55 @@ final class EventsFake extends EventsManager
     public function assertNoTierCreated(): void
     {
         $this->assertNotRecorded(EventOperation::CreateTier);
+    }
+
+    /**
+     * @param  (Closure(AdmissionTier): bool)|null  $callback
+     */
+    public function assertTierUpdated(?Closure $callback = null): void
+    {
+        $this->assertRecorded(EventOperation::UpdateTier, self::tierMatches($callback));
+    }
+
+    public function assertNoTierUpdated(): void
+    {
+        $this->assertNotRecorded(EventOperation::UpdateTier);
+    }
+
+    /**
+     * @param  (Closure(AdmissionTier): bool)|null  $callback
+     */
+    public function assertTierDeleted(?Closure $callback = null): void
+    {
+        $this->assertRecorded(EventOperation::DeleteTier, self::tierMatches($callback));
+    }
+
+    public function assertNoTierDeleted(): void
+    {
+        $this->assertNotRecorded(EventOperation::DeleteTier);
+    }
+
+    /**
+     * @param  (Closure(AdmissionTier): bool)|null  $callback
+     */
+    public function assertTierRestored(?Closure $callback = null): void
+    {
+        $this->assertRecorded(EventOperation::RestoreTier, self::tierMatches($callback));
+    }
+
+    public function assertNoTierRestored(): void
+    {
+        $this->assertNotRecorded(EventOperation::RestoreTier);
+    }
+
+    public function assertTiersReordered(?Event $event = null): void
+    {
+        $this->assertRecorded(EventOperation::ReorderTiers, static fn (RecordedEventOperation $recorded): bool => $recorded->concerns($event));
+    }
+
+    public function assertNoTiersReordered(): void
+    {
+        $this->assertNotRecorded(EventOperation::ReorderTiers);
     }
 
     // RSVPs ----------------------------------------------------------------------------------
@@ -283,7 +486,117 @@ final class EventsFake extends EventsManager
     }
 
     /**
-     * A manual waitlist promotion of `$event` that promoted someone.
+     * A manager added `$attendee` to `$event` (each null means any).
+     */
+    public function assertAttendeeAdded(?Event $event = null, ?Model $attendee = null): void
+    {
+        $this->assertRecorded(EventOperation::AddAttendee, static fn (RecordedEventOperation $recorded): bool => $recorded->concerns($event)
+            && self::attendeeMatches($recorded, $attendee));
+    }
+
+    public function assertNoAttendeeAdded(): void
+    {
+        $this->assertNotRecorded(EventOperation::AddAttendee);
+    }
+
+    /**
+     * A manager removed `$attendee` from `$event` (each null means any).
+     */
+    public function assertAttendeeRemoved(?Event $event = null, ?Model $attendee = null): void
+    {
+        $this->assertRecorded(EventOperation::RemoveAttendee, static fn (RecordedEventOperation $recorded): bool => $recorded->concerns($event)
+            && self::attendeeMatches($recorded, $attendee));
+    }
+
+    public function assertNoAttendeeRemoved(): void
+    {
+        $this->assertNotRecorded(EventOperation::RemoveAttendee);
+    }
+
+    public function assertTierChanged(?Event $event = null): void
+    {
+        $this->assertRecorded(EventOperation::ChangeTier, static fn (RecordedEventOperation $recorded): bool => $recorded->concerns($event));
+    }
+
+    public function assertNoTierChanged(): void
+    {
+        $this->assertNotRecorded(EventOperation::ChangeTier);
+    }
+
+    public function assertGuestsChanged(?Event $event = null): void
+    {
+        $this->assertRecorded(EventOperation::ChangeGuests, static fn (RecordedEventOperation $recorded): bool => $recorded->concerns($event));
+    }
+
+    public function assertNoGuestsChanged(): void
+    {
+        $this->assertNotRecorded(EventOperation::ChangeGuests);
+    }
+
+    /**
+     * A manager confirmed a hold by hand ("paid at the door") at `$event`.
+     */
+    public function assertRsvpConfirmed(?Event $event = null): void
+    {
+        $this->assertRecorded(EventOperation::ConfirmRsvp, static fn (RecordedEventOperation $recorded): bool => $recorded->concerns($event));
+    }
+
+    public function assertNoRsvpConfirmed(): void
+    {
+        $this->assertNotRecorded(EventOperation::ConfirmRsvp);
+    }
+
+    public function assertHoldReleased(?Event $event = null): void
+    {
+        $this->assertRecorded(EventOperation::ReleaseHold, static fn (RecordedEventOperation $recorded): bool => $recorded->concerns($event));
+    }
+
+    public function assertNoHoldReleased(): void
+    {
+        $this->assertNotRecorded(EventOperation::ReleaseHold);
+    }
+
+    /**
+     * A checkout requested for a hold at `$event` (by hand or by the package's own job).
+     */
+    public function assertPaymentRequested(?Event $event = null): void
+    {
+        $this->assertRecorded(EventOperation::RequestPayment, static fn (RecordedEventOperation $recorded): bool => $recorded->concerns($event));
+    }
+
+    public function assertNoPaymentRequested(): void
+    {
+        $this->assertNotRecorded(EventOperation::RequestPayment);
+    }
+
+    public function assertCodeRotated(?Event $event = null): void
+    {
+        $this->assertRecorded(EventOperation::RotateCode, static fn (RecordedEventOperation $recorded): bool => $recorded->concerns($event));
+    }
+
+    public function assertNoCodeRotated(): void
+    {
+        $this->assertNotRecorded(EventOperation::RotateCode);
+    }
+
+    /**
+     * A deleted attendee's RSVPs released (the `AttendsEvents` deletion hook) — of `$attendee`
+     * when given.
+     */
+    public function assertAttendeeForgotten(?Model $attendee = null): void
+    {
+        $this->assertRecorded(EventOperation::ForgetAttendee, static fn (RecordedEventOperation $recorded): bool => $attendee === null
+            || $recorded->model('attendee')?->is($attendee) === true);
+    }
+
+    public function assertNoAttendeeForgotten(): void
+    {
+        $this->assertNotRecorded(EventOperation::ForgetAttendee);
+    }
+
+    /**
+     * A manual waitlist promotion of `$event` that promoted someone. Automatic promotions (after a
+     * decline, a sweep or a capacity change) show as the operation that triggered them.
      */
     public function assertPromoted(?Event $event = null): void
     {
@@ -325,6 +638,16 @@ final class EventsFake extends EventsManager
         $this->assertNotRecorded(EventOperation::ManualCheckIn);
     }
 
+    public function assertCheckInUndone(?Event $event = null): void
+    {
+        $this->assertRecorded(EventOperation::UndoCheckIn, static fn (RecordedEventOperation $recorded): bool => $recorded->concerns($event));
+    }
+
+    public function assertNoCheckInUndone(): void
+    {
+        $this->assertNotRecorded(EventOperation::UndoCheckIn);
+    }
+
     // People ---------------------------------------------------------------------------------
 
     public function assertInvited(?Event $event = null, ?Model $invitee = null): void
@@ -347,6 +670,43 @@ final class EventsFake extends EventsManager
     public function assertNoCoHostAdded(): void
     {
         $this->assertNotRecorded(EventOperation::AddCoHost);
+    }
+
+    public function assertCoHostRemoved(?Event $event = null, ?Model $host = null): void
+    {
+        $this->assertRecorded(EventOperation::RemoveCoHost, static fn (RecordedEventOperation $recorded): bool => $recorded->concerns($event)
+            && ($host === null || $recorded->model('host')?->is($host) === true));
+    }
+
+    public function assertNoCoHostRemoved(): void
+    {
+        $this->assertNotRecorded(EventOperation::RemoveCoHost);
+    }
+
+    public function assertInvitationRevoked(?Event $event = null, ?Model $invitee = null): void
+    {
+        $this->assertRecorded(EventOperation::RevokeInvitation, static fn (RecordedEventOperation $recorded): bool => $recorded->concerns($event)
+            && ($invitee === null || $recorded->model('invitee')?->is($invitee) === true));
+    }
+
+    public function assertNoInvitationRevoked(): void
+    {
+        $this->assertNotRecorded(EventOperation::RevokeInvitation);
+    }
+
+    /**
+     * An invitation to `$event` answered from its link — accepted (going or interested) or
+     * declined (`RsvpResponse::NotGoing`); each null means any.
+     */
+    public function assertInvitationAnswered(?Event $event = null, ?RsvpResponse $response = null): void
+    {
+        $this->assertRecorded(EventOperation::RespondToInvitation, static fn (RecordedEventOperation $recorded): bool => $recorded->concerns($event)
+            && ($response === null || ($recorded->context['response'] ?? null) === $response));
+    }
+
+    public function assertNoInvitationAnswered(): void
+    {
+        $this->assertNotRecorded(EventOperation::RespondToInvitation);
     }
 
     // Maintenance ----------------------------------------------------------------------------
@@ -372,6 +732,80 @@ final class EventsFake extends EventsManager
     }
 
     // Plumbing -------------------------------------------------------------------------------
+
+    /**
+     * @param  list<Tag|int|string>|null  $labels
+     */
+    private static function passedEveryTag(RecordedEventOperation $recorded, ?array $labels): bool
+    {
+        $given = $recorded->context['labels'] ?? [];
+        $given = is_iterable($given) ? [...$given] : [$given];
+
+        foreach ($labels ?? [] as $label) {
+            if (array_filter($given, static fn (mixed $passed): bool => self::sameTag($passed, $label)) === []) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * The attendee of a recorded call — passed as a model or an RSVP, or the RSVP it returned.
+     */
+    private static function attendeeMatches(RecordedEventOperation $recorded, ?Model $attendee): bool
+    {
+        if ($attendee === null) {
+            return true;
+        }
+
+        foreach ([$recorded->context['attendee'] ?? null, $recorded->context['rsvp'] ?? null, $recorded->result] as $candidate) {
+            $matches = $candidate instanceof Rsvp
+                ? $candidate->attendee_type === $attendee->getMorphClass() && (string) $candidate->attendee_id === (string) $attendee->getKey()
+                : $candidate instanceof Model && $candidate->is($attendee);
+
+            if ($matches) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  (Closure(Venue): bool)|null  $callback
+     * @return Closure(RecordedEventOperation): bool
+     */
+    private static function venueMatches(?Closure $callback): Closure
+    {
+        return static function (RecordedEventOperation $recorded) use ($callback): bool {
+            $venue = $recorded->result instanceof Venue ? $recorded->result : ($recorded->context['venue'] ?? null);
+
+            return $callback === null || ($venue instanceof Venue && $callback($venue));
+        };
+    }
+
+    /**
+     * @param  (Closure(AdmissionTier): bool)|null  $callback
+     * @return Closure(RecordedEventOperation): bool
+     */
+    private static function tierMatches(?Closure $callback): Closure
+    {
+        return static function (RecordedEventOperation $recorded) use ($callback): bool {
+            if ($callback === null) {
+                return true;
+            }
+
+            $tier = $recorded->result instanceof AdmissionTier ? $recorded->result : ($recorded->context['tier'] ?? null);
+
+            if (! $tier instanceof AdmissionTier && (is_int($tier) || is_string($tier))) {
+                $query = EventModels::tier()::withTrashed()->where('event_id', $recorded->event()?->getKey());
+                $tier = is_int($tier) ? $query->whereKey($tier)->first() : $query->where('key', $tier)->first();
+            }
+
+            return $tier instanceof AdmissionTier && $callback($tier);
+        };
+    }
 
     private static function sameTag(mixed $passed, Tag|int|string $expected): bool
     {

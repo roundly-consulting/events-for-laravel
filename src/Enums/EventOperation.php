@@ -57,6 +57,7 @@ enum EventOperation: string
     case RequestPayment = 'request_payment';
     case PromoteWaitlist = 'promote_waitlist';
     case RotateCode = 'rotate_code';
+    case ForgetAttendee = 'forget_attendee';
 
     // Check-in
     case CheckIn = 'check_in';

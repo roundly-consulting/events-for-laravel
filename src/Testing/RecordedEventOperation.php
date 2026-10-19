@@ -7,13 +7,15 @@ namespace RoundlyConsulting\Events\Testing;
 use Illuminate\Database\Eloquent\Model;
 use RoundlyConsulting\Events\Enums\EventOperation;
 use RoundlyConsulting\Events\Models\Event;
+use RoundlyConsulting\Events\Models\Rsvp;
 
 /**
  * One operation recorded by {@see EventsFake}: what ran, with which arguments, and what it
  * returned. Context keys: `event` (the event it ran on), `actor`, `system`, `silent` (handle
- * calls); `data` (DTOs); `reason`, `starts_at`, `ends_at`, `transition`, `url` (status changes);
- * `venue`, `tier`, `rsvp`, `attendee`, `status`, `host`, `invitee`, `reference`, `code` (hashed
- * never — the plain code is not recorded).
+ * calls); `data` (DTOs); `reason`, `starts_at`, `ends_at`, `transition`, `keep_venue`, `force`,
+ * `removed` (status and record changes); `organizer`, `keep_as_host` (transfers); `labels`,
+ * `category`; `venue`, `tier`, `order`, `rsvp`, `attendee`, `guests`, `host`, `invitee`,
+ * `response`, `reference`, `options`. A check-in code is never recorded.
  */
 final readonly class RecordedEventOperation
 {
@@ -27,11 +29,16 @@ final readonly class RecordedEventOperation
     ) {}
 
     /**
-     * The event the operation ran on (or created).
+     * The event the operation ran on (or created) — for a call that only returned an RSVP (an
+     * invitation accepted from its link), that RSVP's event.
      */
     public function event(): ?Event
     {
         $event = $this->context['event'] ?? $this->result;
+
+        if ($event instanceof Rsvp) {
+            $event = $event->event;
+        }
 
         return $event instanceof Event ? $event : null;
     }
