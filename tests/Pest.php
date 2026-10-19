@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use RoundlyConsulting\Events\Testing\EventExpectations;
+use RoundlyConsulting\Events\Tests\Fixtures\ApiTestCase;
 use RoundlyConsulting\Events\Tests\Fixtures\NewYorkTestCase;
 use RoundlyConsulting\Events\Tests\Fixtures\SwappedModelsTestCase;
 use RoundlyConsulting\Events\Tests\Fixtures\UlidKeyTestCase;
@@ -14,6 +15,9 @@ EventExpectations::register();
 
 // Explicit directories, never a blanket `->in(__DIR__)`: Pest binds one test case per directory.
 uses(TestCase::class)->in('Arch', 'Feature', 'Unit', 'RealEngine');
+
+// The JSON API, switched on before boot.
+uses(ApiTestCase::class)->in('Http');
 
 // The model-swap proofs need events.models.* pointed at host subclasses before boot.
 uses(SwappedModelsTestCase::class)->in('ModelSwap');

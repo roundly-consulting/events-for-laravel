@@ -54,3 +54,18 @@ ArchPresets::runtimeRequireIsWhitelisted(__DIR__.'/../../composer.json');
 ArchPresets::noDebuggingLeftovers();
 
 ArchPresets::modelsGoThroughTheFacade('RoundlyConsulting\Events');
+
+arch('controllers read input through validated form requests only')
+    ->expect('RoundlyConsulting\\Events\\Http\\Controllers')
+    ->not->toUse(['request', 'input'])
+    ->and('RoundlyConsulting\\Events\\Http\\Controllers')
+    ->not->toUse(['Illuminate\\Support\\Facades\\Request']);
+
+test('controllers never call all() or input() on a request', function (): void {
+    foreach (glob(__DIR__.'/../../src/Http/Controllers/*.php') ?: [] as $file) {
+        $code = (string) file_get_contents($file);
+
+        // Every request a controller receives is named $request.
+        expect($code)->not->toMatch('/\\$request->(all|input|get|query|post|only|except|collect)\\(/', basename($file));
+    }
+});

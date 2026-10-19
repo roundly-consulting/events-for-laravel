@@ -2,6 +2,12 @@
 
 declare(strict_types=1);
 
+use RoundlyConsulting\Events\Http\Resources\EventActorResource;
+use RoundlyConsulting\Events\Http\Resources\EventAttendeeResource;
+use RoundlyConsulting\Events\Http\Resources\EventHostResource;
+use RoundlyConsulting\Events\Http\Resources\EventInviteeResource;
+use RoundlyConsulting\Events\Http\Resources\EventOrganizerResource;
+use RoundlyConsulting\Events\Http\Resources\VenueOwnerResource;
 use RoundlyConsulting\Events\Lifecycle\EventLifecycle;
 use RoundlyConsulting\Events\Models\AdmissionTier;
 use RoundlyConsulting\Events\Models\Event;
@@ -302,6 +308,51 @@ return [
         'keep_cancelled_for' => 'P30D',
         'max_events' => 500,
         'name' => env('APP_NAME', 'Events'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | How related host models render over the API
+    |--------------------------------------------------------------------------
+    |
+    | Every person or team the API mentions (organizer, co-host, attendee, invitee, an actor,
+    | a venue's owner) renders through its own resource, by default `{id, type}` with the
+    | class basename — never a class name. Point a key at your own JsonResource to add a name
+    | or an avatar; it receives the model.
+    |
+    */
+
+    'resources' => [
+        'organizer' => EventOrganizerResource::class,
+        'host' => EventHostResource::class,
+        'attendee' => EventAttendeeResource::class,
+        'invitee' => EventInviteeResource::class,
+        'actor' => EventActorResource::class,
+        'venue_owner' => VenueOwnerResource::class,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | JSON API (opt-in)
+    |--------------------------------------------------------------------------
+    |
+    | Off unless `EVENTS_ROUTES=on`. Reads allow guests (visibility applies); writes add
+    | `auth_middleware`. Rate limits are per minute.
+    |
+    */
+
+    'routes' => [
+        'enabled' => env('EVENTS_ROUTES') ?: 'off',
+        'prefix' => 'api',
+        'middleware' => ['api', 'throttle:events-api'],
+        'auth_middleware' => ['auth'],
+        'max_per_page' => 100,
+        'rate_limits' => [
+            'api' => 120,
+            'rsvp' => 20,
+            'check_in' => 300,
+            'feeds' => 60,
+        ],
     ],
 
     /*

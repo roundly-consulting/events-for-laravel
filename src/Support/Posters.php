@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Events\Support;
 
+use Illuminate\Support\Collection;
 use RoundlyConsulting\Events\Models\Event;
 use RoundlyConsulting\MediaLibrary\Models\Media;
 
@@ -16,9 +17,28 @@ use RoundlyConsulting\MediaLibrary\Models\Media;
  */
 final class Posters
 {
+    /**
+     * The poster — from the eager-loaded `media` relation when a list loaded it (no query per
+     * row), else one query.
+     */
     public static function of(Event $event): ?Media
     {
-        return $event->getFirstMedia(EventsConfig::posterBucket());
+        $bucket = EventsConfig::posterBucket();
+
+        if ($event->relationLoaded('media')) {
+            $media = $event->getRelation('media');
+
+            if ($media instanceof Collection) {
+                $poster = $media
+                    ->filter(static fn (mixed $item): bool => $item instanceof Media && $item->bucket_name === $bucket)
+                    ->sortBy([['order_column', 'asc'], ['id', 'asc']])
+                    ->first();
+
+                return $poster instanceof Media ? $poster : null;
+            }
+        }
+
+        return $event->getFirstMedia($bucket);
     }
 
     public static function url(Event $event, string $variant = ''): ?string

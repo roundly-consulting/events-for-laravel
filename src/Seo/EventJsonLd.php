@@ -53,7 +53,7 @@ final readonly class EventJsonLd
             'startDate' => $this->date($event, $event->starts_at, start: true),
             'endDate' => $this->date($event, $event->ends_at, start: false),
             'doorTime' => $event->all_day || $event->doors_open_at === null ? null : $event->doors_open_at->setTimezone($event->timezone)->toIso8601String(),
-            'eventStatus' => self::SCHEMA.$this->status($event),
+            'eventStatus' => self::SCHEMA.self::status($event),
             'previousStartDate' => $event->phase === EventPhase::Rescheduled && $event->previous_starts_at !== null
                 ? $this->date($event, $event->previous_starts_at, start: true)
                 : null,
@@ -98,7 +98,10 @@ final readonly class EventJsonLd
         return $moment->setTimezone($event->timezone)->toIso8601String();
     }
 
-    private function status(Event $event): string
+    /**
+     * The schema.org EventStatus name of the event's phase (also the API's `schema_status`).
+     */
+    public static function status(Event $event): string
     {
         return match ($event->phase) {
             EventPhase::Postponed => 'EventPostponed',

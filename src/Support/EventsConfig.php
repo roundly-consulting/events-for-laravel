@@ -6,12 +6,20 @@ namespace RoundlyConsulting\Events\Support;
 
 use Carbon\CarbonInterval;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\Resources\Json\JsonResource;
+use ReflectionClass;
 use RoundlyConsulting\Events\Contracts\EventLifecycle as EventLifecycleContract;
 use RoundlyConsulting\Events\DataTransferObjects\PosterVariant;
 use RoundlyConsulting\Events\Enums\GuestList;
 use RoundlyConsulting\Events\Enums\Visibility;
 use RoundlyConsulting\Events\Exceptions\InvalidEventLifecycleException;
 use RoundlyConsulting\Events\Exceptions\InvalidEventsConfigurationException;
+use RoundlyConsulting\Events\Http\Resources\EventActorResource;
+use RoundlyConsulting\Events\Http\Resources\EventAttendeeResource;
+use RoundlyConsulting\Events\Http\Resources\EventHostResource;
+use RoundlyConsulting\Events\Http\Resources\EventInviteeResource;
+use RoundlyConsulting\Events\Http\Resources\EventOrganizerResource;
+use RoundlyConsulting\Events\Http\Resources\VenueOwnerResource;
 use RoundlyConsulting\Events\Lifecycle\EventLifecycle;
 use RoundlyConsulting\Lifecycle\Definition\LifecycleDefinition;
 use RoundlyConsulting\PackageToolkit\Exceptions\InvalidConfigurationException;
@@ -481,5 +489,140 @@ final class EventsConfig
         }
 
         return $url;
+    }
+
+    public static function routesEnabled(): bool
+    {
+        return Config::boolean('events.routes.enabled', false);
+    }
+
+    public static function routesPrefix(): string
+    {
+        return trim(Config::string('events.routes.prefix', 'api'), '/');
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function routesMiddleware(): array
+    {
+        return self::stringList(config('events.routes.middleware'), 'events.routes.middleware', ['api', 'throttle:events-api']);
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function authMiddleware(): array
+    {
+        return self::stringList(config('events.routes.auth_middleware'), 'events.routes.auth_middleware', ['auth']);
+    }
+
+    public static function maxPerPage(): int
+    {
+        return Config::integer('events.routes.max_per_page', 100, min: 1, max: 1000);
+    }
+
+    public static function apiRateLimit(): int
+    {
+        return Config::integer('events.routes.rate_limits.api', 120, min: 1);
+    }
+
+    public static function rsvpRateLimit(): int
+    {
+        return Config::integer('events.routes.rate_limits.rsvp', 20, min: 1);
+    }
+
+    public static function checkInRateLimit(): int
+    {
+        return Config::integer('events.routes.rate_limits.check_in', 300, min: 1);
+    }
+
+    public static function feedsRateLimit(): int
+    {
+        return Config::integer('events.routes.rate_limits.feeds', 60, min: 1);
+    }
+
+    /**
+     * @return class-string<JsonResource>
+     */
+    public static function organizerResource(): string
+    {
+        return self::resource(config('events.resources.organizer'), 'events.resources.organizer', EventOrganizerResource::class);
+    }
+
+    /**
+     * @return class-string<JsonResource>
+     */
+    public static function hostResource(): string
+    {
+        return self::resource(config('events.resources.host'), 'events.resources.host', EventHostResource::class);
+    }
+
+    /**
+     * @return class-string<JsonResource>
+     */
+    public static function attendeeResource(): string
+    {
+        return self::resource(config('events.resources.attendee'), 'events.resources.attendee', EventAttendeeResource::class);
+    }
+
+    /**
+     * @return class-string<JsonResource>
+     */
+    public static function inviteeResource(): string
+    {
+        return self::resource(config('events.resources.invitee'), 'events.resources.invitee', EventInviteeResource::class);
+    }
+
+    /**
+     * @return class-string<JsonResource>
+     */
+    public static function actorResource(): string
+    {
+        return self::resource(config('events.resources.actor'), 'events.resources.actor', EventActorResource::class);
+    }
+
+    /**
+     * @return class-string<JsonResource>
+     */
+    public static function venueOwnerResource(): string
+    {
+        return self::resource(config('events.resources.venue_owner'), 'events.resources.venue_owner', VenueOwnerResource::class);
+    }
+
+    /**
+     * A blank value is the default; anything but an instantiable JsonResource subclass throws.
+     *
+     * @param  class-string<JsonResource>  $default
+     * @return class-string<JsonResource>
+     */
+    private static function resource(mixed $value, string $key, string $default): string
+    {
+        if ($value === null || (is_string($value) && trim($value) === '')) {
+            return $default;
+        }
+
+        if (! is_string($value) || ! class_exists($value) || ! is_subclass_of($value, JsonResource::class) || ! (new ReflectionClass($value))->isInstantiable()) {
+            throw InvalidConfigurationException::notAnImplementation($key, JsonResource::class, $value);
+        }
+
+        return $value;
+    }
+
+    /**
+     * @param  list<string>  $default
+     * @return list<string>
+     */
+    private static function stringList(mixed $value, string $key, array $default): array
+    {
+        if ($value === null) {
+            return $default;
+        }
+
+        if (! is_array($value) || array_filter($value, static fn (mixed $item): bool => ! is_string($item) || trim($item) === '') !== []) {
+            throw InvalidEventsConfigurationException::invalidChoice($key, $value, 'a list of middleware names');
+        }
+
+        return array_values($value);
     }
 }

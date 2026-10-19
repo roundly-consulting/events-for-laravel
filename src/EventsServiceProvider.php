@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Events;
 
+use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Contracts\Auth\Access\Gate;
 use Illuminate\Contracts\Events\Dispatcher;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
 use RoundlyConsulting\Events\Contracts\CheckInCodes;
 use RoundlyConsulting\Events\Contracts\CollectsAdmissionPayment;
 use RoundlyConsulting\Events\Contracts\EventUrls;
@@ -41,12 +44,14 @@ final class EventsServiceProvider extends PackageServiceProvider
             ->hasConfigFile()
             ->hasMigrations()
             ->hasTranslations()
-            ->hasViews();
+            ->hasViews()
+            ->hasRoutes('events.php', 'events.routes.enabled');
     }
 
     public function register(): void
     {
         parent::register();
+        self::keepUnsetRoutesSwitchOff();
 
         $this->app->singleton(EventsManager::class);
         $this->bindFromConfig(CollectsAdmissionPayment::class, 'events.payments.collector', NoPaymentCollector::class);
@@ -60,6 +65,9 @@ final class EventsServiceProvider extends PackageServiceProvider
 
     public function boot(): void
     {
+        // Again before the toolkit reads the switch: config may change between register and boot.
+        self::keepUnsetRoutesSwitchOff();
+
         parent::boot();
 
         // The migrations use the toolkit's key-type macros; lifecycle, tags, translatable,
@@ -72,9 +80,44 @@ final class EventsServiceProvider extends PackageServiceProvider
 
         $this->registerPolicies();
         $this->defineTagTypes();
+        $this->registerRateLimiters();
 
         // @eventJsonLd($event): the schema.org script tag, or nothing.
         $this->registerBladeDirective('eventJsonLd', static fn (string $expression): string => "<?php echo ({$expression})->renderJsonLd(); ?>");
+    }
+
+    /**
+     * The JSON API is opt-in, but the toolkit reads a switch that is not set as on: a published
+     * config that overrides only part of `routes` (the merge is shallow), `null`, or a bare
+     * `env()` with the variable unset would load every route. Interim guard (tags' precedent):
+     * replace it with `hasRoutes(..., enabledByDefault: false)` once the toolkit ships it.
+     */
+    private static function keepUnsetRoutesSwitchOff(): void
+    {
+        $enabled = config('events.routes.enabled');
+
+        if ($enabled === null || (is_string($enabled) && trim($enabled) === '')) {
+            config()->set('events.routes.enabled', 'off');
+        }
+    }
+
+    /**
+     * The API's limits, per minute: the API as a whole, RSVP answers (per user and event), door
+     * scans (bursty) and calendar feeds (per IP). Only with the routes on.
+     */
+    private function registerRateLimiters(): void
+    {
+        if (! EventsConfig::routesEnabled()) {
+            return;
+        }
+
+        $who = static fn (Request $request): string => (string) ($request->user()?->getAuthIdentifier() ?? $request->ip());
+
+        RateLimiter::for('events-api', static fn (Request $request): Limit => Limit::perMinute(EventsConfig::apiRateLimit())->by('api:'.$who($request)));
+        RateLimiter::for('events-rsvp', static fn (Request $request): Limit => Limit::perMinute(EventsConfig::rsvpRateLimit())
+            ->by('rsvp:'.$who($request).':'.(string) $request->route('event')));
+        RateLimiter::for('events-check-in', static fn (Request $request): Limit => Limit::perMinute(EventsConfig::checkInRateLimit())->by('check-in:'.$who($request)));
+        RateLimiter::for('events-feeds', static fn (Request $request): Limit => Limit::perMinute(EventsConfig::feedsRateLimit())->by('feeds:'.(string) $request->ip()));
     }
 
     /**

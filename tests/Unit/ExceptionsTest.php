@@ -53,7 +53,7 @@ test('exception_messages_name_no_classes', function (string $locale): void {
             ->not->toContain('events::messages')
             ->not->toContain('RoundlyConsulting')
             ->and($exception->errorCode())->toMatch('/^[a-z_]+$/')
-            ->and($exception->status())->toBeIn([403, 404, 409, 422, 429]);
+            ->and($exception->status())->toBeIn([400, 403, 404, 409, 422, 429]);
     }
 })->with(['en', 'sk']);
 

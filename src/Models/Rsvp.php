@@ -62,6 +62,7 @@ use RoundlyConsulting\Qr\ValueObjects\Svg;
  * @property-read Event $event
  * @property-read Model|null $attendee
  * @property-read AdmissionTier|null $tier
+ * @property-read Model|null $checkedInBy
  */
 class Rsvp extends Model
 {
@@ -102,6 +103,16 @@ class Rsvp extends Model
     public function attendee(): MorphTo
     {
         return $this->morphTo();
+    }
+
+    /**
+     * Who checked the attendee in by hand or scanned the code, when recorded.
+     *
+     * @return MorphTo<Model, $this>
+     */
+    public function checkedInBy(): MorphTo
+    {
+        return $this->morphTo('checkedInBy', 'checked_in_by_type', 'checked_in_by_id');
     }
 
     /**
