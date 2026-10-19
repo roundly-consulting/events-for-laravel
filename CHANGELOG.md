@@ -1,7 +1,13 @@
 # Changelog
 
-All notable changes to `package-template-for-laravel` are documented in this file. The format
+All notable changes to `events-for-laravel` are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
+
+Initial public release.
+
+### Added
+
+- Package scaffold: the native service provider, the `Events` facade and its fake, Pint, Larastan level 7 and Pest.

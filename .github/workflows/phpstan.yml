@@ -15,9 +15,13 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: 8.4
+          extensions: dom, curl, libxml, mbstring, zip, pdo, sqlite, pdo_sqlite, bcmath, intl, fileinfo
           coverage: none
 
+      # tags-for-laravel is not on Packagist yet: composer reads it from its private repo.
       - name: Install dependencies
+        env:
+          COMPOSER_AUTH: '{"github-oauth":{"github.com":"${{ secrets.PRIVATE_REPOS_TOKEN }}"}}'
         run: composer update --prefer-dist --no-interaction
 
       - name: Run PHPStan
