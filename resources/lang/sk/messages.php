@@ -81,6 +81,7 @@ return [
         'outside_window' => 'Registrácia pri vstupe teraz nie je otvorená.',
     ],
 
+    'invitation_message_too_long' => 'Správa k pozvánke môže mať najviac :max znakov.',
     'invalid_invitation' => 'Pozvánka nie je platná.',
     'event_trashed' => 'Podujatie je zmazané. Ak ho chcete meniť, obnovte ho.',
     'unknown_transition_verb' => 'Životný cyklus podujatia nemá prechod pre „:verb“. Použite transition() s názvom prechodu.',

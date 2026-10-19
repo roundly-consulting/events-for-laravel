@@ -23,5 +23,7 @@ Initial public release.
 - RSVPs (`Events::for($event)->rsvp($user)->going()`, `$user->rsvp($event)` through `AttendsEvents`): going, interested or not going, with guests within each ticket type's party limits, event and ticket type capacity, and a waitlist that promotes first fit in order — race-free under concurrent requests on PostgreSQL and MySQL, with no queue-jumping and an automatic cutoff before the start.
 - Paid ticket types hold seats while a payment is pending: a host `CollectsAdmissionPayment` collector opens the checkout, your webhook confirms with `Events::rsvps()->confirmPayment()`, late and declined payments are refused for refund, and `Events::sweep()` releases lapsed holds.
 - Managers' list tools (`attendees()`: add, remove, change ticket type or guests, confirm, release) and waitlist tools (`waitlist()`: list, promote, position), and `counts()`.
-- A recording, still-performing `Events::fake()`.
+- Check-in at the door: unguessable 160-bit codes (encrypted, hash-indexed), a QR code that is never cached (`$rsvp->checkInQr()`), scoped and unscoped scans that are idempotent and refuse other events' codes, a check-in window, manual check-in and undo, and code rotation.
+- Co-hosts (`hosts()`), organizer transfer, `Concerns\OrganizesEvents` and invite-only events: `invitations()->send()` mints a bearer token stored as a hash only, `Events::invitations()->accept()` / `decline()` answer from the link.
+- A recording, still-performing `Events::fake()` with paired assertions, and Pest expectations (`toBeGoingTo`, `toBeWaitlistedFor`, `toBeCheckedInTo`).
 - English and Slovak translations.

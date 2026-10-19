@@ -14,10 +14,13 @@ use RoundlyConsulting\Events\Concerns\StoresUtcTimestamps;
 use RoundlyConsulting\Events\Database\Factories\RsvpFactory;
 use RoundlyConsulting\Events\Enums\CheckInMethod;
 use RoundlyConsulting\Events\Enums\RsvpStatus;
+use RoundlyConsulting\Events\EventsManager;
 use RoundlyConsulting\Events\Support\EventModels;
 use RoundlyConsulting\Events\Support\EventsConfig;
 use RoundlyConsulting\Money\Casts\AsMoney;
 use RoundlyConsulting\Money\Money;
+use RoundlyConsulting\Qr\DataTransferObjects\QrOptions;
+use RoundlyConsulting\Qr\ValueObjects\Svg;
 
 /**
  * One attendee's answer to one event: going, held (seats reserved while a payment is pending),
@@ -57,7 +60,7 @@ use RoundlyConsulting\Money\Money;
  * @property CarbonImmutable|null $created_at
  * @property CarbonImmutable|null $updated_at
  * @property-read Event $event
- * @property-read Model $attendee
+ * @property-read Model|null $attendee
  * @property-read AdmissionTier|null $tier
  */
 class Rsvp extends Model
@@ -170,6 +173,15 @@ class Rsvp extends Model
     public function checkInCode(): ?string
     {
         return $this->check_in_code;
+    }
+
+    /**
+     * The check-in code as an inline SVG QR code — never memoised or cached (qr's Secret
+     * sensitivity). Null when the RSVP has no code.
+     */
+    public function checkInQr(?QrOptions $options = null): ?Svg
+    {
+        return app(EventsManager::class)->rsvps()->qr($this, $options);
     }
 
     /**

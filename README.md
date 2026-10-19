@@ -28,11 +28,46 @@ php artisan migrate
 ```
 
 Set `EVENTS_KEY_TYPE` to your users' key type (`bigint`, `uuid` or `ulid`) before migrating, and keep
-`EVENTS_PRIMARY_KEY_TYPE` equal to `lifecycle.key_type` and `tags.key_type`.
+`EVENTS_PRIMARY_KEY_TYPE` equal to `lifecycle.key_type` and `tags.key_type`. Schedule `events:sweep` and
+`lifecycle:sweep` every minute (held seats expire, events complete).
 
 ## Usage
 
-Create a venue, publish an event with a ticket type, then RSVP:
+Create a venue, publish an event with two ticket types, then RSVP and check in at the door:
+
+```php
+use RoundlyConsulting\Events\Facades\Events;
+use RoundlyConsulting\Money\Money;
+
+// A reusable venue: its timezone is how every wall-clock time below is read
+$venue = Events::venues()->make('Blue Note')
+    ->address(street: 'Hlavná 1', city: 'Bratislava', postalCode: '811 01', country: 'SK')
+    ->coordinates(48.1439, 17.1097)
+    ->timezone('Europe/Bratislava')
+    ->create();
+
+$event = Events::make(['en' => 'Jazz Night', 'sk' => 'Jazzový večer'])
+    ->description(['en' => 'A live quartet, then an open jam session.'])
+    ->organizedBy($user)
+    ->at($venue)
+    ->startsAt('2026-11-14 20:00')                 // 20:00 in Bratislava, stored as UTC
+    ->duration('3 hours')                          // or 'PT3H', a CarbonInterval, or ->endsAt(...)
+    ->capacity(120)
+    ->tier('Free entry', key: 'free')
+    ->tier('Supporter', price: Money::ofMajor('15', 'EUR'), capacity: 30)   // key "supporter"
+    ->publish();
+
+// RSVP: a seat while there is one, the waitlist once it is full
+$rsvp = Events::for($event)->rsvp($attendee)->going(tier: 'free');
+$rsvp->isGoing();                                   // or isWaitlisted(), isHeld()
+
+// At the door: scan the attendee's QR code ($rsvp->checkInQr() draws it)
+$result = Events::for($event)->checkIn($scannedCode);
+$result->firstCheckIn;                              // false if the code was already used
+
+// Discovery: upcoming published events the visitor may see
+Events::browse($visitor)->upcoming()->paginate();
+```
 
 <!-- roundly-docs:start -->
 ## Documentation

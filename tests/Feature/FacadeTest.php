@@ -21,7 +21,9 @@ it('pins the facade contract', function (): void {
     expect(Events::class)
         ->toDocumentItsRoot()
         ->toBeFakeable()
-        ->toReachEveryAction(__DIR__.'/../../src/Actions');
+        ->toReachEveryAction(__DIR__.'/../../src/Actions')
+        // Events::checkIn($code, …): the code never shows in the facade's trace frame.
+        ->toRedactSensitiveArguments(1);
 });
 
 it('registers no global alias: Events is one letter from Laravel\'s Event facade (OQ-4)', function (): void {
@@ -55,7 +57,7 @@ it('resolves actions through the container so a host override applies', function
     Events::make('Meetup')->organizedBy(User::factory()->create())->startsAt('2027-03-01 18:00')->create();
 })->throws(RuntimeException::class, 'overridden');
 
-it('records every path under the fake while still running it', function (): void {
+test('fake_assertions_see_every_path', function (): void {
     $fake = Events::fake();
     $user = User::factory()->create();
 
@@ -99,7 +101,7 @@ it('records nothing for a call that throws', function (): void {
     $fake->assertNothingHappened();
 });
 
-it('fails each assertion with a clear message', function (Closure $assertion, string $message): void {
+test('fake_assertions_fail_with_a_clear_message', function (Closure $assertion, string $message): void {
     $fake = Events::fake();
     $event = Event::factory()->create();
 

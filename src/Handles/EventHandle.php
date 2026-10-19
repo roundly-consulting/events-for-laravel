@@ -8,6 +8,7 @@ use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\App;
+use RoundlyConsulting\Events\Actions\CheckIns\CheckInByCodeAction;
 use RoundlyConsulting\Events\Actions\Events\CancelEventAction;
 use RoundlyConsulting\Events\Actions\Events\CompleteEventAction;
 use RoundlyConsulting\Events\Actions\Events\DeleteEventAction;
@@ -17,12 +18,15 @@ use RoundlyConsulting\Events\Actions\Events\PublishEventAction;
 use RoundlyConsulting\Events\Actions\Events\RescheduleEventAction;
 use RoundlyConsulting\Events\Actions\Events\RestoreEventAction;
 use RoundlyConsulting\Events\Actions\Events\SetPosterAction;
+use RoundlyConsulting\Events\Actions\Events\TransferOrganizerAction;
 use RoundlyConsulting\Events\Actions\Events\TransitionEventAction;
 use RoundlyConsulting\Events\Actions\Events\UnpublishEventAction;
 use RoundlyConsulting\Events\Actions\Events\UpdateEventAction;
 use RoundlyConsulting\Events\Builders\EventEditor;
 use RoundlyConsulting\Events\Builders\PendingRsvp;
 use RoundlyConsulting\Events\Contracts\EventState;
+use RoundlyConsulting\Events\Contracts\Organizer;
+use RoundlyConsulting\Events\DataTransferObjects\CheckInResult;
 use RoundlyConsulting\Events\DataTransferObjects\EventCounts;
 use RoundlyConsulting\Events\DataTransferObjects\UpdateEventData;
 use RoundlyConsulting\Events\Enums\EventOperation;
@@ -161,6 +165,56 @@ final readonly class EventHandle
     public function waitlist(): EventWaitlist
     {
         return new EventWaitlist($this);
+    }
+
+    /**
+     * Check in at the door by the attendee's code (or a URL holding it). Refuses another event's
+     * code (`wrong_event`), an unknown or revoked one, outside the window unless `ignoreWindow`.
+     * Idempotent: a second scan reports `firstCheckIn: false`.
+     */
+    public function checkIn(#[SensitiveParameter] string $code, ?int $guests = null, bool $ignoreWindow = false): CheckInResult
+    {
+        $this->authorize('checkIn');
+
+        return $this->manager->perform(
+            EventOperation::CheckIn,
+            CheckInByCodeAction::class,
+            fn (CheckInByCodeAction $action): CheckInResult => $action->execute($code, $this->event, $this->actor, $guests, $ignoreWindow),
+            $this->context(['guests' => $guests]),
+        );
+    }
+
+    /**
+     * Co-hosts: `add`, `remove`, `all`, `has`.
+     */
+    public function hosts(): EventHosts
+    {
+        return new EventHosts($this);
+    }
+
+    /**
+     * Invitations: `send`, `revoke`, `all`, `pending`.
+     */
+    public function invitations(): EventInvitations
+    {
+        return new EventInvitations($this);
+    }
+
+    /**
+     * Hand the event to another organizer, who must allow the actor; `keepAsHost` keeps the old one
+     * as a co-host.
+     */
+    public function transferTo(Model&Organizer $organizer, bool $keepAsHost = false): static
+    {
+        $this->authorize('transfer');
+        $this->manager->perform(
+            EventOperation::TransferOrganizer,
+            TransferOrganizerAction::class,
+            fn (TransferOrganizerAction $action): Event => $action->execute($this->event, $organizer, $keepAsHost, $this->actor),
+            $this->context(['organizer' => $organizer, 'keep_as_host' => $keepAsHost]),
+        );
+
+        return $this;
     }
 
     /**

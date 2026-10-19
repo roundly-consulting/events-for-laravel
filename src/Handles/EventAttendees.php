@@ -6,12 +6,15 @@ namespace RoundlyConsulting\Events\Handles;
 
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
+use RoundlyConsulting\Events\Actions\CheckIns\CheckInAttendeeAction;
+use RoundlyConsulting\Events\Actions\CheckIns\UndoCheckInAction;
 use RoundlyConsulting\Events\Actions\Rsvps\AddAttendeeAction;
 use RoundlyConsulting\Events\Actions\Rsvps\ChangeGuestsAction;
 use RoundlyConsulting\Events\Actions\Rsvps\ChangeTierAction;
 use RoundlyConsulting\Events\Actions\Rsvps\ConfirmRsvpAction;
 use RoundlyConsulting\Events\Actions\Rsvps\ReleaseHoldAction;
 use RoundlyConsulting\Events\Actions\Rsvps\RemoveAttendeeAction;
+use RoundlyConsulting\Events\DataTransferObjects\CheckInResult;
 use RoundlyConsulting\Events\Enums\EventOperation;
 use RoundlyConsulting\Events\Enums\RsvpStatus;
 use RoundlyConsulting\Events\Models\AdmissionTier;
@@ -113,6 +116,47 @@ final readonly class EventAttendees
             fn (ReleaseHoldAction $action): Rsvp => $action->execute($this->handle->event(), $who, $this->handle->actor()),
             $this->handle->context(['attendee' => $who]),
         );
+    }
+
+    /**
+     * Check someone in by hand — no code, any time. They must be going.
+     */
+    public function checkIn(Rsvp|Model $who, ?int $guests = null): CheckInResult
+    {
+        $this->handle->authorize('checkIn');
+
+        return $this->handle->manager()->perform(
+            EventOperation::ManualCheckIn,
+            CheckInAttendeeAction::class,
+            fn (CheckInAttendeeAction $action): CheckInResult => $action->execute($this->handle->event(), $who, $guests, $this->handle->actor()),
+            $this->handle->context(['attendee' => $who, 'guests' => $guests]),
+        );
+    }
+
+    public function undoCheckIn(Rsvp|Model $who): self
+    {
+        $this->handle->authorize('checkIn');
+        $this->handle->manager()->perform(
+            EventOperation::UndoCheckIn,
+            UndoCheckInAction::class,
+            fn (UndoCheckInAction $action): Rsvp => $action->execute($this->handle->event(), $who, $this->handle->actor()),
+            $this->handle->context(['attendee' => $who]),
+        );
+
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, Rsvp>
+     */
+    public function checkedIn(): Collection
+    {
+        return EventModels::rsvp()::query()
+            ->where('event_id', $this->handle->event()->getKey())
+            ->whereNotNull('checked_in_at')
+            ->with('attendee')
+            ->orderBy('checked_in_at')
+            ->get();
     }
 
     /**

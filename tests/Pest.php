@@ -2,11 +2,15 @@
 
 declare(strict_types=1);
 
+use RoundlyConsulting\Events\Testing\EventExpectations;
 use RoundlyConsulting\Events\Tests\Fixtures\NewYorkTestCase;
 use RoundlyConsulting\Events\Tests\Fixtures\SwappedModelsTestCase;
 use RoundlyConsulting\Events\Tests\Fixtures\UlidKeyTestCase;
 use RoundlyConsulting\Events\Tests\Fixtures\UuidKeyTestCase;
 use RoundlyConsulting\Events\Tests\TestCase;
+
+// The package's own matchers, as a host registers them.
+EventExpectations::register();
 
 // Explicit directories, never a blanket `->in(__DIR__)`: Pest binds one test case per directory.
 uses(TestCase::class)->in('Arch', 'Feature', 'Unit', 'RealEngine');

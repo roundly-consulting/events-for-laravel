@@ -7,6 +7,7 @@ namespace RoundlyConsulting\Events\Facades;
 use Illuminate\Support\Facades\Facade;
 use RoundlyConsulting\Events\EventsManager;
 use RoundlyConsulting\Events\Testing\EventsFake;
+use RoundlyConsulting\PackageToolkit\Concerns\RedactsSensitiveArguments;
 
 /**
  * Real-world events: venues, events, ticket types, RSVPs, check-in, invitations.
@@ -21,6 +22,8 @@ use RoundlyConsulting\Events\Testing\EventsFake;
  * @method static \Illuminate\Database\Eloquent\Builder<\RoundlyConsulting\Events\Models\Event> visibleTo(\Illuminate\Database\Eloquent\Model|null $viewer)
  * @method static \RoundlyConsulting\Events\Accessors\Venues venues()
  * @method static \RoundlyConsulting\Events\Accessors\Rsvps rsvps()
+ * @method static \RoundlyConsulting\Events\Accessors\Invitations invitations()
+ * @method static \RoundlyConsulting\Events\DataTransferObjects\CheckInResult checkIn(string $code, \Illuminate\Database\Eloquent\Model $by, int|null $guests = null, bool $ignoreWindow = false)
  * @method static \RoundlyConsulting\Events\DataTransferObjects\SweepResult sweep(\RoundlyConsulting\Events\DataTransferObjects\SweepOptions|null $options = null)
  * @method static list<\RoundlyConsulting\Events\Testing\RecordedEventOperation> recorded(\RoundlyConsulting\Events\Enums\EventOperation|null $operation = null)
  * @method static void assertNothingHappened()
@@ -48,6 +51,12 @@ use RoundlyConsulting\Events\Testing\EventsFake;
  * @method static void assertNothingPromoted()
  * @method static void assertPaymentConfirmed(string|null $reference = null)
  * @method static void assertNoPaymentConfirmed()
+ * @method static void assertCheckedIn(\RoundlyConsulting\Events\Models\Event|null $event = null, \Illuminate\Database\Eloquent\Model|null $attendee = null)
+ * @method static void assertNothingCheckedIn()
+ * @method static void assertInvited(\RoundlyConsulting\Events\Models\Event|null $event = null, \Illuminate\Database\Eloquent\Model|null $invitee = null)
+ * @method static void assertNothingInvited()
+ * @method static void assertCoHostAdded(\RoundlyConsulting\Events\Models\Event|null $event = null, \Illuminate\Database\Eloquent\Model|null $host = null)
+ * @method static void assertNoCoHostAdded()
  * @method static void assertSwept()
  * @method static void assertNothingSwept()
  *
@@ -55,6 +64,9 @@ use RoundlyConsulting\Events\Testing\EventsFake;
  */
 final class Events extends Facade
 {
+    // Check-in codes passed to Events::checkIn() never show in a stack trace's facade frame.
+    use RedactsSensitiveArguments;
+
     /**
      * Swap the manager for a recording, still-performing fake — behind the facade and in the
      * container, so an injected EventsManager is faked too.

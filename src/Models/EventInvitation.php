@@ -37,7 +37,7 @@ use RoundlyConsulting\Events\Support\EventsConfig;
  * @property CarbonImmutable|null $created_at
  * @property CarbonImmutable|null $updated_at
  * @property-read Event $event
- * @property-read Model $invitee
+ * @property-read Model|null $invitee
  * @property-read Model|null $invitedBy
  */
 final class EventInvitation extends Model

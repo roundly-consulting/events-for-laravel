@@ -9,12 +9,16 @@ use Illuminate\Contracts\Container\Container;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
+use RoundlyConsulting\Events\Accessors\Invitations;
 use RoundlyConsulting\Events\Accessors\Rsvps;
 use RoundlyConsulting\Events\Accessors\Venues;
+use RoundlyConsulting\Events\Actions\CheckIns\CheckInByCodeAction;
 use RoundlyConsulting\Events\Actions\Events\CreateEventAction;
 use RoundlyConsulting\Events\Actions\Internal\ReleaseAttendeeRsvpsAction;
 use RoundlyConsulting\Events\Actions\Maintenance\SweepEventsAction;
 use RoundlyConsulting\Events\Builders\EventBuilder;
+use RoundlyConsulting\Events\Contracts\CheckInCodes;
+use RoundlyConsulting\Events\DataTransferObjects\CheckInResult;
 use RoundlyConsulting\Events\DataTransferObjects\CreateEventData;
 use RoundlyConsulting\Events\DataTransferObjects\SweepOptions;
 use RoundlyConsulting\Events\DataTransferObjects\SweepResult;
@@ -22,8 +26,11 @@ use RoundlyConsulting\Events\Enums\EventOperation;
 use RoundlyConsulting\Events\Exceptions\EventNotFoundException;
 use RoundlyConsulting\Events\Handles\EventHandle;
 use RoundlyConsulting\Events\Models\Event;
+use RoundlyConsulting\Events\Support\CheckInQr;
 use RoundlyConsulting\Events\Support\EventModels;
 use RoundlyConsulting\Events\Support\EventVisibility;
+use RoundlyConsulting\Events\Support\InvitationTokens;
+use SensitiveParameter;
 
 /**
  * The package's public API: the root behind the `Events` facade, injectable by its own
@@ -146,7 +153,30 @@ class EventsManager
      */
     public function rsvps(): Rsvps
     {
-        return new Rsvps($this);
+        return new Rsvps($this, $this->container->make(CheckInCodes::class), $this->container->make(CheckInQr::class));
+    }
+
+    /**
+     * Answering an invitation from its link: `accept`, `decline`, `find`.
+     */
+    public function invitations(): Invitations
+    {
+        return new Invitations($this, $this->container->make(InvitationTokens::class));
+    }
+
+    /**
+     * Check in by code without knowing the event (a festival gate scanning several): the code
+     * finds its event, and the `checkIn` policy runs on it for `$by` — a non-manager is answered
+     * like an unknown code.
+     */
+    public function checkIn(#[SensitiveParameter] string $code, Model $by, ?int $guests = null, bool $ignoreWindow = false): CheckInResult
+    {
+        return $this->perform(
+            EventOperation::CheckIn,
+            CheckInByCodeAction::class,
+            static fn (CheckInByCodeAction $action): CheckInResult => $action->execute($code, null, $by, $guests, $ignoreWindow),
+            ['actor' => $by, 'guests' => $guests],
+        );
     }
 
     /**

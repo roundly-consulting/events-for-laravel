@@ -81,6 +81,7 @@ return [
         'outside_window' => 'Check-in is not open now.',
     ],
 
+    'invitation_message_too_long' => 'The invitation message may not be longer than :max characters.',
     'invalid_invitation' => 'The invitation is not valid.',
     'event_trashed' => 'The event is deleted. Restore it to change it.',
     'unknown_transition_verb' => 'The event lifecycle has no transition for ":verb". Use transition() with a transition name.',

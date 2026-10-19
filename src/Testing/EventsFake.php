@@ -9,6 +9,7 @@ use Illuminate\Contracts\Container\Container;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use PHPUnit\Framework\Assert as PHPUnit;
+use RoundlyConsulting\Events\DataTransferObjects\CheckInResult;
 use RoundlyConsulting\Events\DataTransferObjects\UpdateEventData;
 use RoundlyConsulting\Events\Enums\EventOperation;
 use RoundlyConsulting\Events\Enums\RsvpStatus;
@@ -261,6 +262,49 @@ final class EventsFake extends EventsManager
         $this->assertNotRecorded(EventOperation::ConfirmPayment);
     }
 
+    // Check-in -------------------------------------------------------------------------------
+
+    /**
+     * A first check-in (by code or by hand) of `$attendee` at `$event` — each null means any.
+     */
+    public function assertCheckedIn(?Event $event = null, ?Model $attendee = null): void
+    {
+        $this->assertRecordedAny([EventOperation::CheckIn, EventOperation::ManualCheckIn], static fn (RecordedEventOperation $recorded): bool => $recorded->result instanceof CheckInResult
+            && $recorded->result->firstCheckIn
+            && ($event === null || $recorded->result->rsvp->event_id == $event->getKey())
+            && ($attendee === null || $recorded->result->attendee->is($attendee)));
+    }
+
+    public function assertNothingCheckedIn(): void
+    {
+        $this->assertNotRecorded(EventOperation::CheckIn);
+        $this->assertNotRecorded(EventOperation::ManualCheckIn);
+    }
+
+    // People ---------------------------------------------------------------------------------
+
+    public function assertInvited(?Event $event = null, ?Model $invitee = null): void
+    {
+        $this->assertRecorded(EventOperation::SendInvitation, static fn (RecordedEventOperation $recorded): bool => $recorded->concerns($event)
+            && ($invitee === null || $recorded->model('invitee')?->is($invitee) === true));
+    }
+
+    public function assertNothingInvited(): void
+    {
+        $this->assertNotRecorded(EventOperation::SendInvitation);
+    }
+
+    public function assertCoHostAdded(?Event $event = null, ?Model $host = null): void
+    {
+        $this->assertRecorded(EventOperation::AddCoHost, static fn (RecordedEventOperation $recorded): bool => $recorded->concerns($event)
+            && ($host === null || $recorded->model('host')?->is($host) === true));
+    }
+
+    public function assertNoCoHostAdded(): void
+    {
+        $this->assertNotRecorded(EventOperation::AddCoHost);
+    }
+
     // Maintenance ----------------------------------------------------------------------------
 
     public function assertSwept(): void
@@ -287,6 +331,19 @@ final class EventsFake extends EventsManager
             array_filter($candidates, $matches),
             sprintf('A [%s] event operation was recorded, but none matched.', $operation->value),
         );
+    }
+
+    /**
+     * @param  list<EventOperation>  $operations
+     * @param  Closure(RecordedEventOperation): bool  $matches
+     */
+    private function assertRecordedAny(array $operations, Closure $matches): void
+    {
+        $candidates = array_values(array_filter($this->recorded, static fn (RecordedEventOperation $recorded): bool => in_array($recorded->operation, $operations, true)));
+        $names = implode('|', array_map(static fn (EventOperation $operation): string => $operation->value, $operations));
+
+        PHPUnit::assertNotEmpty($candidates, sprintf('Expected a [%s] event operation, but none was recorded.', $names));
+        PHPUnit::assertNotEmpty(array_filter($candidates, $matches), sprintf('A [%s] event operation was recorded, but none matched.', $names));
     }
 
     private function assertNotRecorded(EventOperation $operation): void

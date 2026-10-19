@@ -109,7 +109,7 @@ use RoundlyConsulting\Translatable\Facades\Translatable as Translations;
  * @property-read EventPhase $phase
  * @property-read Media|null $poster
  * @property-read Venue|null $venue
- * @property-read Model $organizer
+ * @property-read Model|null $organizer the organizer (null once its row is gone)
  * @property-read Collection<int, AdmissionTier> $tiers
  * @property-read Collection<int, Rsvp> $rsvps
  * @property-read Collection<int, EventHost> $hosts
