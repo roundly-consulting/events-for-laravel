@@ -30,6 +30,7 @@ use RoundlyConsulting\PackageToolkit\Concerns\RedactsSensitiveArguments;
  * @method static \RoundlyConsulting\Events\Calendar\Feeds feeds()
  * @method static array<string, mixed>|null jsonLd(\RoundlyConsulting\Events\Models\Event $event)
  * @method static \RoundlyConsulting\Events\DataTransferObjects\SweepResult sweep(\RoundlyConsulting\Events\DataTransferObjects\SweepOptions|null $options = null)
+ * @method static \RoundlyConsulting\Events\DataTransferObjects\RepairReport repair(\RoundlyConsulting\Events\DataTransferObjects\RepairOptions|null $options = null)
  * @method static list<\RoundlyConsulting\Events\Testing\RecordedEventOperation> recorded(\RoundlyConsulting\Events\Enums\EventOperation|null $operation = null)
  * @method static void assertNothingHappened()
  * @method static void assertCreated(\Closure|null $callback = null)
@@ -68,6 +69,8 @@ use RoundlyConsulting\PackageToolkit\Concerns\RedactsSensitiveArguments;
  * @method static void assertNoCoHostAdded()
  * @method static void assertSwept()
  * @method static void assertNothingSwept()
+ * @method static void assertRepaired()
+ * @method static void assertNothingRepaired()
  *
  * @see EventsManager
  */

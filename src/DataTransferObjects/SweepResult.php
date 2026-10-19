@@ -13,5 +13,7 @@ final readonly class SweepResult
         public int $events = 0,
         public int $expiredHolds = 0,
         public int $promoted = 0,
+        public int $reminders = 0,
+        public int $notified = 0,
     ) {}
 }

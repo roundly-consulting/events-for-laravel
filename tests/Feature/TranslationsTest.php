@@ -8,7 +8,7 @@ use Illuminate\Support\Arr;
  * English and Slovak ship the same keys and placeholders in every file, and the Slovak lines
  * resolve through the package namespace.
  */
-$files = ['messages', 'enums', 'tags', 'feeds'];
+$files = ['messages', 'enums', 'tags', 'feeds', 'notifications', 'validation'];
 
 /**
  * @return array<string, string>
@@ -60,3 +60,17 @@ it('resolves slovak through the package namespace', function (): void {
     expect(__('events::messages.event_full'))->toBe('Podujatie je plne obsadené.')
         ->and(__('events::enums.rsvp_status.waitlisted'))->toBe('Na čakacej listine');
 });
+
+it('resolves every plural line for 0, 1, 3 and 5 in both locales', function (string $locale): void {
+    app()->setLocale($locale);
+    $plurals = array_filter(eventLines($locale, 'notifications'), static fn (string $line): bool => str_contains($line, '|'));
+
+    expect($plurals)->not->toBeEmpty();
+
+    foreach (array_keys($plurals) as $key) {
+        foreach ([0, 1, 3, 5] as $count) {
+            $line = trans_choice('events::notifications.'.$key, $count, ['count' => $count]);
+            expect($line)->not->toContain('|')->not->toContain(':count')->not->toBe('events::notifications.'.$key);
+        }
+    }
+})->with(['en', 'sk']);

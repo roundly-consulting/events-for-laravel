@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Str;
 use RoundlyConsulting\Events\Contracts\EventUrls;
 use RoundlyConsulting\Events\DataTransferObjects\UpdateEventData;
@@ -12,6 +13,8 @@ use RoundlyConsulting\Events\Exceptions\InvalidCheckInCodeException;
 use RoundlyConsulting\Events\Facades\Events;
 use RoundlyConsulting\Events\Models\Event;
 use RoundlyConsulting\Events\Models\EventInvitation;
+use RoundlyConsulting\Events\Notifications\EventPostponedNotification;
+use RoundlyConsulting\Events\Notifications\EventReminderNotification;
 use RoundlyConsulting\Events\Tests\Fixtures\Models\User;
 use RoundlyConsulting\Events\Tests\Support\Scenarios;
 
@@ -34,6 +37,13 @@ test('private_events_never_leak', function (): void {
     $private = $this->private;
     $uuid = $private->uuid;
     $missing = (string) Str::uuid();
+
+    // Notices reach only those who may see the event — checked again at delivery.
+    Notification::fake();
+    Events::for($private)->postpone('Moved');
+    Notification::assertSentTo($this->invitee, EventPostponedNotification::class);
+    Notification::assertNotSentTo($this->stranger, EventPostponedNotification::class);
+    expect((new EventPostponedNotification($private))->shouldSend($this->stranger, 'mail'))->toBeFalse();
 
     // PHP surfaces.
     expect(Events::browse($this->stranger)->pluck('id')->all())->toBe([$this->public->getKey()])
@@ -67,6 +77,7 @@ test('private_events_never_leak', function (): void {
 
     // The invitee sees it.
     $this->actingAs($this->invitee)->getJson("/api/events/{$uuid}")->assertOk()->assertJsonPath('data.online_url', 'https://meet.example.com/secret-room');
+
 });
 
 test('online_url_is_attendee_only', function (): void {
@@ -91,6 +102,12 @@ test('online_url_is_attendee_only', function (): void {
         ->and($this->actingAs($interested)->get("{$uri}/calendar.ics")->getContent())->not->toContain('join-123')
         ->and((string) Events::feeds()->public())->not->toContain('join-123')
         ->and(json_encode(Events::jsonLd($event)))->not->toContain('join-123');
+
+    // Notices: the join link only for those who may see it.
+    $reminder = new EventReminderNotification($event);
+    expect(implode(' ', $reminder->toMail($going)->introLines))->toContain('join-123')
+        ->and(implode(' ', $reminder->toMail($interested)->introLines))->not->toContain('join-123')
+        ->and(json_encode($reminder->toArray($going)))->not->toContain('join-123');
 });
 
 test('check_in_codes_stay_secret_over_the_api', function (): void {

@@ -23,17 +23,19 @@ extensions (plus `gd` or `imagick` for poster variants).
 
 ```bash
 composer require roundly-consulting/events-for-laravel
-php artisan vendor:publish --tag="events-migrations" --tag="lifecycle-migrations" --tag="tags-migrations" --tag="media-migrations"
+php artisan events:install
 php artisan migrate
 ```
 
 Set `EVENTS_KEY_TYPE` to your users' key type (`bigint`, `uuid` or `ulid`) before migrating, and keep
-`EVENTS_PRIMARY_KEY_TYPE` equal to `lifecycle.key_type` and `tags.key_type`. Schedule `lifecycle:sweep` every
-minute so finished events complete on their own.
+`EVENTS_PRIMARY_KEY_TYPE` equal to `lifecycle.key_type` and `tags.key_type`. Schedule `events:sweep` and
+`lifecycle:sweep` every minute (held seats expire, reminders go out, finished events complete), then run
+`php artisan events:doctor`.
 
 ## Usage
 
-Create a venue, publish an event with two ticket types, then RSVP and check in at the door:
+Create a venue and a category, publish an event with two ticket types, then RSVP, check in at the door and
+find events near you:
 
 ```php
 use RoundlyConsulting\Events\Facades\Events;
@@ -46,6 +48,8 @@ $venue = Events::venues()->make('Blue Note')
     ->timezone('Europe/Bratislava')
     ->create();
 
+Events::categories()->make(['en' => 'Jazz', 'sk' => 'Jazz'])->create();   // categories are curated
+
 $event = Events::make(['en' => 'Jazz Night', 'sk' => 'Jazzový večer'])
     ->description(['en' => 'A live quartet, then an open jam session.'])
     ->organizedBy($user)
@@ -53,6 +57,9 @@ $event = Events::make(['en' => 'Jazz Night', 'sk' => 'Jazzový večer'])
     ->startsAt('2026-11-14 20:00')                 // 20:00 in Bratislava, stored as UTC
     ->duration('3 hours')                          // or 'PT3H', a CarbonInterval, or ->endsAt(...)
     ->capacity(120)
+    ->category('jazz')
+    ->labels(['Live', 'Late night'])
+    ->poster($request->file('poster'))
     ->tier('Free entry', key: 'free')
     ->tier('Supporter', price: Money::ofMajor('15', 'EUR'), capacity: 30)   // key "supporter"
     ->publish();
@@ -61,12 +68,12 @@ $event = Events::make(['en' => 'Jazz Night', 'sk' => 'Jazzový večer'])
 $rsvp = Events::for($event)->rsvp($attendee)->going(tier: 'free');
 $rsvp->isGoing();                                   // or isWaitlisted(), isHeld()
 
-// At the door: scan the attendee's QR code ($rsvp->checkInQr() draws it)
+// At the door: scan the attendee's QR code
 $result = Events::for($event)->checkIn($scannedCode);
 $result->firstCheckIn;                              // false if the code was already used
 
-// Discovery: upcoming published events the visitor may see
-Events::browse($visitor)->upcoming()->paginate();
+// Discovery: upcoming published events (cancelled ones flagged by phase) within 25 km, nearest first
+Events::browse()->upcoming()->near($here, km: 25)->orderByDistance($here)->paginate();
 ```
 
 <!-- roundly-docs:start -->

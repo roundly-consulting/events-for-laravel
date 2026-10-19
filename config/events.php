@@ -13,6 +13,15 @@ use RoundlyConsulting\Events\Models\AdmissionTier;
 use RoundlyConsulting\Events\Models\Event;
 use RoundlyConsulting\Events\Models\Rsvp;
 use RoundlyConsulting\Events\Models\Venue;
+use RoundlyConsulting\Events\Notifications\EventCancelledNotification;
+use RoundlyConsulting\Events\Notifications\EventInvitationNotification;
+use RoundlyConsulting\Events\Notifications\EventMovedOnlineNotification;
+use RoundlyConsulting\Events\Notifications\EventPostponedNotification;
+use RoundlyConsulting\Events\Notifications\EventReminderNotification;
+use RoundlyConsulting\Events\Notifications\EventRescheduledNotification;
+use RoundlyConsulting\Events\Notifications\EventUpdatedNotification;
+use RoundlyConsulting\Events\Notifications\RsvpConfirmedNotification;
+use RoundlyConsulting\Events\Notifications\WaitlistPromotedNotification;
 use RoundlyConsulting\Events\Payments\NoPaymentCollector;
 use RoundlyConsulting\Events\Policies\EventPolicy;
 use RoundlyConsulting\Events\Policies\VenuePolicy;
@@ -353,6 +362,62 @@ return [
             'check_in' => 300,
             'feeds' => 60,
         ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Notifications
+    |--------------------------------------------------------------------------
+    |
+    | Queued, sent after the commit, in each recipient's locale, with times in the event's own
+    | timezone. Swap a type for your own class (it must extend the package's) or turn it off
+    | with `false`. `audiences` lists who hears about an event-wide change, by RSVP status.
+    | `Events::for($event)->silently()` writes without notices.
+    |
+    */
+
+    'notifications' => [
+        'enabled' => env('EVENTS_NOTIFICATIONS', 'on'),
+        'channels' => ['mail'],
+        'queue' => null,
+        'notify_actor' => false,
+        'types' => [
+            'invited' => EventInvitationNotification::class,
+            'confirmed' => RsvpConfirmedNotification::class,
+            'waitlist_promoted' => WaitlistPromotedNotification::class,
+            'reminder' => EventReminderNotification::class,
+            'updated' => EventUpdatedNotification::class,
+            'postponed' => EventPostponedNotification::class,
+            'rescheduled' => EventRescheduledNotification::class,
+            'cancelled' => EventCancelledNotification::class,
+            'moved_online' => EventMovedOnlineNotification::class,
+        ],
+        'audiences' => [
+            'reminder' => ['going'],
+            'updated' => ['going', 'held'],
+            'postponed' => ['going', 'held', 'waitlisted', 'interested'],
+            'rescheduled' => ['going', 'held', 'waitlisted', 'interested'],
+            'cancelled' => ['going', 'held', 'waitlisted', 'interested'],
+            'moved_online' => ['going', 'held'],
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Reminders
+    |--------------------------------------------------------------------------
+    |
+    | ISO-8601 offsets before the start (between PT5M and P31D), sent once each by
+    | `events:sweep`. A day offset keeps the local wall clock across a DST change; all-day
+    | events are reminded at `all_day_at` local time. A reminder later than `max_lateness` is
+    | dropped. An event's own `reminders` replace these.
+    |
+    */
+
+    'reminders' => [
+        'offsets' => [],
+        'max_lateness' => 'PT1H',
+        'all_day_at' => '09:00',
     ],
 
     /*

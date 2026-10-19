@@ -72,4 +72,5 @@ enum EventOperation: string
 
     // Maintenance
     case Sweep = 'sweep';
+    case Repair = 'repair';
 }

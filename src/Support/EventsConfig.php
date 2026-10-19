@@ -11,6 +11,7 @@ use ReflectionClass;
 use RoundlyConsulting\Events\Contracts\EventLifecycle as EventLifecycleContract;
 use RoundlyConsulting\Events\DataTransferObjects\PosterVariant;
 use RoundlyConsulting\Events\Enums\GuestList;
+use RoundlyConsulting\Events\Enums\RsvpStatus;
 use RoundlyConsulting\Events\Enums\Visibility;
 use RoundlyConsulting\Events\Exceptions\InvalidEventLifecycleException;
 use RoundlyConsulting\Events\Exceptions\InvalidEventsConfigurationException;
@@ -624,5 +625,130 @@ final class EventsConfig
         }
 
         return array_values($value);
+    }
+
+    public static function notificationsEnabled(): bool
+    {
+        return Config::boolean('events.notifications.enabled', true);
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function notificationChannels(): array
+    {
+        return self::stringList(config('events.notifications.channels'), 'events.notifications.channels', ['mail']);
+    }
+
+    public static function notificationQueue(): ?string
+    {
+        return self::nullableString(config('events.notifications.queue'), 'events.notifications.queue');
+    }
+
+    public static function notifyActor(): bool
+    {
+        return Config::boolean('events.notifications.notify_actor', false);
+    }
+
+    /**
+     * The notification class for a type: the host's (a subclass of the package's), the package's
+     * when blank, or null when turned off with `false`.
+     *
+     * @param  class-string  $default
+     * @return class-string|null
+     */
+    public static function notificationClass(string $type, string $default): ?string
+    {
+        $types = config('events.notifications.types');
+        $value = is_array($types) && array_key_exists($type, $types) ? $types[$type] : null;
+
+        if ($value === false) {
+            return null;
+        }
+
+        if ($value === null || (is_string($value) && trim($value) === '')) {
+            return $default;
+        }
+
+        if (! is_string($value) || ! class_exists($value) || ! is_a($value, $default, true)) {
+            throw InvalidConfigurationException::notAnImplementation('events.notifications.types.'.$type, $default, $value);
+        }
+
+        return $value;
+    }
+
+    /**
+     * Who hears about an event-wide change of this type, by RSVP status.
+     *
+     * @param  list<RsvpStatus>  $default
+     * @return list<RsvpStatus>
+     */
+    public static function audience(string $type, array $default): array
+    {
+        $audiences = config('events.notifications.audiences');
+        $value = is_array($audiences) && array_key_exists($type, $audiences) ? $audiences[$type] : null;
+
+        if ($value === null) {
+            return $default;
+        }
+
+        if (! is_array($value)) {
+            throw InvalidEventsConfigurationException::invalidChoice('events.notifications.audiences.'.$type, $value, 'a list of RSVP statuses');
+        }
+
+        return array_values(array_map(static fn (mixed $status): RsvpStatus => is_string($status) && RsvpStatus::tryFrom($status) !== null
+            ? RsvpStatus::from($status)
+            : throw InvalidEventsConfigurationException::invalidChoice('events.notifications.audiences.'.$type, $status, 'going, held, waitlisted, interested'), $value));
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function reminderOffsets(): array
+    {
+        $offsets = config('events.reminders.offsets');
+
+        if ($offsets === null) {
+            return [];
+        }
+
+        if (! is_array($offsets)) {
+            throw InvalidEventsConfigurationException::invalidDuration('events.reminders.offsets', $offsets);
+        }
+
+        $list = [];
+
+        foreach ($offsets as $offset) {
+            if (! is_string($offset)) {
+                throw InvalidEventsConfigurationException::invalidDuration('events.reminders.offsets', $offset);
+            }
+
+            self::duration($offset, 'events.reminders.offsets');
+            $list[] = $offset;
+        }
+
+        return array_values(array_unique($list));
+    }
+
+    public static function reminderMaxLateness(): CarbonInterval
+    {
+        return self::duration(Config::string('events.reminders.max_lateness', 'PT1H'), 'events.reminders.max_lateness');
+    }
+
+    /**
+     * The local time all-day events are reminded at (`events.reminders.all_day_at`): `[hour, minute]`.
+     *
+     * @return array{0: int, 1: int}
+     */
+    public static function allDayReminderAt(): array
+    {
+        $value = config('events.reminders.all_day_at');
+        $value = $value === null || $value === '' ? '09:00' : $value;
+
+        if (! is_string($value) || preg_match('/^([01]\d|2[0-3]):([0-5]\d)$/', $value, $match) !== 1) {
+            throw InvalidEventsConfigurationException::invalidTime('events.reminders.all_day_at', $value);
+        }
+
+        return [(int) $match[1], (int) $match[2]];
     }
 }

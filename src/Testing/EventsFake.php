@@ -367,6 +367,16 @@ final class EventsFake extends EventsManager
         $this->assertNotRecorded(EventOperation::Sweep);
     }
 
+    public function assertRepaired(): void
+    {
+        $this->assertRecorded(EventOperation::Repair, static fn (): bool => true);
+    }
+
+    public function assertNothingRepaired(): void
+    {
+        $this->assertNotRecorded(EventOperation::Repair);
+    }
+
     // Plumbing -------------------------------------------------------------------------------
 
     private static function sameTag(mixed $passed, Tag|int|string $expected): bool

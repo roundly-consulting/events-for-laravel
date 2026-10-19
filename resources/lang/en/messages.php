@@ -19,7 +19,7 @@ return [
     'event_use_reschedule' => 'A published event gets a new start by rescheduling it.',
     'event_has_attendees' => 'People are coming to this event. Postpone or cancel it so they are told.',
     'event_invalid_sort_direction' => 'The sort direction must be asc or desc, :direction given.',
-    'event_invalid_reminders' => 'Reminders are at most 5 ISO-8601 durations of at least PT5M each.',
+    'event_invalid_reminders' => 'Reminders are at most 5 ISO-8601 durations between PT5M and P31D.',
     'event_invalid_visibility' => 'The visibility ":value" is not public, unlisted or private.',
     'event_not_an_organizer' => 'This model cannot organize events.',
     'event_invalid_datetime' => 'The :attribute value is not a date and time.',

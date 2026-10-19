@@ -20,6 +20,22 @@ it('ships exactly the config keys it reads', function (): void {
             'events.poster.variants.square',
             'events.poster.variants.landscape',
             'events.poster.variants.wide',
+            // Read per type, whole: type => class|false, type => [status, …].
+            'events.notifications.types.invited',
+            'events.notifications.types.confirmed',
+            'events.notifications.types.waitlist_promoted',
+            'events.notifications.types.reminder',
+            'events.notifications.types.updated',
+            'events.notifications.types.postponed',
+            'events.notifications.types.rescheduled',
+            'events.notifications.types.cancelled',
+            'events.notifications.types.moved_online',
+            'events.notifications.audiences.reminder',
+            'events.notifications.audiences.updated',
+            'events.notifications.audiences.postponed',
+            'events.notifications.audiences.rescheduled',
+            'events.notifications.audiences.cancelled',
+            'events.notifications.audiences.moved_online',
         ]],
     );
 });

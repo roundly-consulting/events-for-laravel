@@ -9,12 +9,27 @@ use Illuminate\Contracts\Auth\Access\Gate;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
+use RoundlyConsulting\Events\Commands\DoctorCommand;
+use RoundlyConsulting\Events\Commands\GeocodeCommand;
+use RoundlyConsulting\Events\Commands\InstallCommand;
+use RoundlyConsulting\Events\Commands\RepairCommand;
+use RoundlyConsulting\Events\Commands\SweepCommand;
 use RoundlyConsulting\Events\Contracts\CheckInCodes;
 use RoundlyConsulting\Events\Contracts\CollectsAdmissionPayment;
 use RoundlyConsulting\Events\Contracts\EventUrls;
 use RoundlyConsulting\Events\Enums\EventTagType;
+use RoundlyConsulting\Events\Events\AttendeeConfirmed;
+use RoundlyConsulting\Events\Events\AttendeePromoted;
+use RoundlyConsulting\Events\Events\EventCancelled;
+use RoundlyConsulting\Events\Events\EventMovedOnline;
+use RoundlyConsulting\Events\Events\EventPostponed;
+use RoundlyConsulting\Events\Events\EventRescheduled;
+use RoundlyConsulting\Events\Events\EventUpdated;
+use RoundlyConsulting\Events\Events\InvitationSent;
+use RoundlyConsulting\Events\Lifecycle\EventLifecycle;
 use RoundlyConsulting\Events\Listeners\OnEventTransitioned;
 use RoundlyConsulting\Events\Listeners\OnEventTransitioning;
+use RoundlyConsulting\Events\Listeners\SendEventNotifications;
 use RoundlyConsulting\Events\Payments\NoPaymentCollector;
 use RoundlyConsulting\Events\Support\EventModels;
 use RoundlyConsulting\Events\Support\EventsConfig;
@@ -45,7 +60,15 @@ final class EventsServiceProvider extends PackageServiceProvider
             ->hasMigrations()
             ->hasTranslations()
             ->hasViews()
-            ->hasRoutes('events.php', 'events.routes.enabled');
+            ->hasRoutes('events.php', 'events.routes.enabled')
+            ->hasCommands([
+                InstallCommand::class,
+                DoctorCommand::class,
+                SweepCommand::class,
+                RepairCommand::class,
+                GeocodeCommand::class,
+            ])
+            ->contributesToAbout($this->aboutSection(...));
     }
 
     public function register(): void
@@ -78,12 +101,49 @@ final class EventsServiceProvider extends PackageServiceProvider
         $events->listen(LifecycleTransitioning::class, OnEventTransitioning::class);
         $events->listen(LifecycleTransitioned::class, OnEventTransitioned::class);
 
+        // Notices, after the commit (the domain events are ShouldDispatchAfterCommit).
+        foreach ([
+            InvitationSent::class => 'invited',
+            AttendeeConfirmed::class => 'confirmed',
+            AttendeePromoted::class => 'promoted',
+            EventUpdated::class => 'updated',
+            EventPostponed::class => 'postponed',
+            EventRescheduled::class => 'rescheduled',
+            EventCancelled::class => 'cancelled',
+            EventMovedOnline::class => 'movedOnline',
+        ] as $event => $method) {
+            $events->listen($event, [SendEventNotifications::class, $method]);
+        }
+
         $this->registerPolicies();
         $this->defineTagTypes();
         $this->registerRateLimiters();
 
         // @eventJsonLd($event): the schema.org script tag, or nothing.
         $this->registerBladeDirective('eventJsonLd', static fn (string $expression): string => "<?php echo ({$expression})->renderJsonLd(); ?>");
+    }
+
+    /**
+     * `php artisan about`: shape, never secrets — key types, the lifecycle, the API and notices,
+     * reminders, the payment collector, geocoding and slug history.
+     *
+     * @return array<string, string>
+     */
+    private function aboutSection(): array
+    {
+        $collector = config('events.payments.collector');
+        $offsets = config('events.reminders.offsets');
+
+        return [
+            'Key type' => sprintf('%s (events), %s (people)', (string) config('events.primary_key_type', 'bigint'), (string) config('events.key_type', 'bigint')),
+            'Lifecycle' => class_basename((string) (config('events.lifecycle') ?: EventLifecycle::class)),
+            'Routes' => EventsConfig::routesEnabled() ? 'ON' : 'OFF',
+            'Notifications' => EventsConfig::notificationsEnabled() ? 'ON ('.implode(', ', EventsConfig::notificationChannels()).')' : 'OFF',
+            'Reminders' => is_array($offsets) && $offsets !== [] ? implode(', ', array_map('strval', $offsets)) : 'NONE',
+            'Payments' => class_basename(is_string($collector) && $collector !== '' ? $collector : NoPaymentCollector::class),
+            'Geocoding' => EventsConfig::geocodeOnCreate() ? 'ON' : 'OFF',
+            'Slug history' => EventsConfig::slugHistory() ? 'ON' : 'OFF',
+        ];
     }
 
     /**

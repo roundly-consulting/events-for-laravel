@@ -29,6 +29,18 @@ abstract class EventsRequest extends FormRequest
         return true;
     }
 
+    /**
+     * Field names in the caller's language (`events::validation.attributes`).
+     *
+     * @return array<string, string>
+     */
+    public function attributes(): array
+    {
+        $names = __('events::validation.attributes');
+
+        return is_array($names) ? array_filter($names, 'is_string') : [];
+    }
+
     protected function failedValidation(Validator $validator): void
     {
         throw new HttpResponseException(new JsonResponse([

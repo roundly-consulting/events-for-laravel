@@ -8,6 +8,7 @@ use RoundlyConsulting\Events\Tests\Fixtures\NewYorkTestCase;
 use RoundlyConsulting\Events\Tests\Fixtures\SwappedModelsTestCase;
 use RoundlyConsulting\Events\Tests\Fixtures\UlidKeyTestCase;
 use RoundlyConsulting\Events\Tests\Fixtures\UuidKeyTestCase;
+use RoundlyConsulting\Events\Tests\Install\InstallTestCase;
 use RoundlyConsulting\Events\Tests\TestCase;
 
 // The package's own matchers, as a host registers them.
@@ -18,6 +19,9 @@ uses(TestCase::class)->in('Arch', 'Feature', 'Unit', 'RealEngine');
 
 // The JSON API, switched on before boot.
 uses(ApiTestCase::class)->in('Http');
+
+// events:install, publishing into a sandbox without the package's tables.
+uses(InstallTestCase::class)->in('Install');
 
 // The model-swap proofs need events.models.* pointed at host subclasses before boot.
 uses(SwappedModelsTestCase::class)->in('ModelSwap');

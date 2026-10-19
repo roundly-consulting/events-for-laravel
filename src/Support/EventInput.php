@@ -120,11 +120,12 @@ final class EventInput
         }
 
         $minimum = CarbonInterval::minutes(5)->totalSeconds;
+        $maximum = CarbonInterval::days(31)->totalSeconds;
 
         foreach ($offsets as $offset) {
             $interval = Durations::iso($offset);
 
-            if ($interval === null || $interval->totalSeconds < $minimum) {
+            if ($interval === null || $interval->totalSeconds < $minimum || $interval->totalSeconds > $maximum) {
                 throw InvalidEventException::invalidReminders();
             }
         }

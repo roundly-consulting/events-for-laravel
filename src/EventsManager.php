@@ -15,6 +15,7 @@ use RoundlyConsulting\Events\Accessors\Venues;
 use RoundlyConsulting\Events\Actions\CheckIns\CheckInByCodeAction;
 use RoundlyConsulting\Events\Actions\Events\CreateEventAction;
 use RoundlyConsulting\Events\Actions\Internal\ReleaseAttendeeRsvpsAction;
+use RoundlyConsulting\Events\Actions\Maintenance\RepairEventsAction;
 use RoundlyConsulting\Events\Actions\Maintenance\SweepEventsAction;
 use RoundlyConsulting\Events\Builders\EventBuilder;
 use RoundlyConsulting\Events\Calendar\Feeds;
@@ -22,6 +23,8 @@ use RoundlyConsulting\Events\Calendar\IcsCalendar;
 use RoundlyConsulting\Events\Contracts\CheckInCodes;
 use RoundlyConsulting\Events\DataTransferObjects\CheckInResult;
 use RoundlyConsulting\Events\DataTransferObjects\CreateEventData;
+use RoundlyConsulting\Events\DataTransferObjects\RepairOptions;
+use RoundlyConsulting\Events\DataTransferObjects\RepairReport;
 use RoundlyConsulting\Events\DataTransferObjects\SweepOptions;
 use RoundlyConsulting\Events\DataTransferObjects\SweepResult;
 use RoundlyConsulting\Events\Enums\EventOperation;
@@ -245,7 +248,8 @@ class EventsManager
     }
 
     /**
-     * The periodic sweep (`events:sweep`, every minute): lapsed holds released, waitlists moved up.
+     * The periodic sweep (`events:sweep`, every minute): lapsed holds released, waitlists moved up,
+     * due reminders sent once.
      */
     public function sweep(?SweepOptions $options = null): SweepResult
     {
@@ -253,6 +257,20 @@ class EventsManager
             EventOperation::Sweep,
             SweepEventsAction::class,
             static fn (SweepEventsAction $action): SweepResult => $action->execute($options),
+            ['options' => $options],
+        );
+    }
+
+    /**
+     * Repair (`events:repair`): recompute counters under each event's lock and release the RSVPs
+     * of attendees whose row is gone.
+     */
+    public function repair(?RepairOptions $options = null): RepairReport
+    {
+        return $this->perform(
+            EventOperation::Repair,
+            RepairEventsAction::class,
+            static fn (RepairEventsAction $action): RepairReport => $action->execute($options),
             ['options' => $options],
         );
     }
