@@ -41,6 +41,9 @@ final class EventHost extends Model
 
     protected $guarded = [];
 
+    /** @var list<string> */
+    protected $hidden = ['host_type', 'added_by_type'];
+
     public function getTable(): string
     {
         return EventsConfig::table('hosts');

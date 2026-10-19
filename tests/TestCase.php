@@ -83,6 +83,8 @@ abstract class TestCase extends PackageTestCase
     protected function configBeforeBoot(): array
     {
         return [
+            // The online link and check-in codes are encrypted casts.
+            'app.key' => 'base64:'.base64_encode(str_repeat('k', 32)),
             'mail.default' => 'array',
             'translatable.locales' => ['en', 'sk'],
             'translatable.fallback_locale' => 'en',

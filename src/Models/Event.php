@@ -25,12 +25,16 @@ use RoundlyConsulting\Events\Database\Factories\EventFactory;
 use RoundlyConsulting\Events\Enums\AttendanceMode;
 use RoundlyConsulting\Events\Enums\EventPhase;
 use RoundlyConsulting\Events\Enums\GuestList;
+use RoundlyConsulting\Events\Enums\RsvpStatus;
 use RoundlyConsulting\Events\Enums\Visibility;
 use RoundlyConsulting\Events\Support\Clock;
+use RoundlyConsulting\Events\Support\EventManagers;
 use RoundlyConsulting\Events\Support\EventModels;
 use RoundlyConsulting\Events\Support\EventsConfig;
 use RoundlyConsulting\Events\Support\EventSlugs;
 use RoundlyConsulting\Events\Support\EventStates;
+use RoundlyConsulting\Events\Support\EventVisibility;
+use RoundlyConsulting\Events\Support\Posters;
 use RoundlyConsulting\Events\Support\WallClock;
 use RoundlyConsulting\Lifecycle\Casts\AsLifecycleState;
 use RoundlyConsulting\Lifecycle\Concerns\HasLifecycle;
@@ -38,11 +42,15 @@ use RoundlyConsulting\Lifecycle\Contracts\LifecycleSubject;
 use RoundlyConsulting\Lifecycle\Definition\LifecycleDefinition;
 use RoundlyConsulting\MediaLibrary\Concerns\InteractsWithMedia;
 use RoundlyConsulting\MediaLibrary\Contracts\HasMedia;
+use RoundlyConsulting\MediaLibrary\Models\Media;
+use RoundlyConsulting\MediaLibrary\Variants\VariantRegistrar;
 use RoundlyConsulting\Sluggable\Concerns\HasSlug;
 use RoundlyConsulting\Sluggable\Contracts\Sluggable;
 use RoundlyConsulting\Sluggable\Definitions\SlugOptions;
 use RoundlyConsulting\Translatable\Concerns\HasTranslations;
 use RoundlyConsulting\Translatable\Contracts\Translatable;
+use RoundlyConsulting\Translatable\DataTransferObjects\TranslationSearch;
+use RoundlyConsulting\Translatable\Facades\Translatable as Translations;
 
 /**
  * One dated real-world event (timed, all-day or multi-day). Instants are stored in UTC with the
@@ -99,6 +107,7 @@ use RoundlyConsulting\Translatable\Contracts\Translatable;
  * @property CarbonImmutable|null $updated_at
  * @property CarbonImmutable|null $deleted_at
  * @property-read EventPhase $phase
+ * @property-read Media|null $poster
  * @property-read Venue|null $venue
  * @property-read Model $organizer
  * @property-read Collection<int, AdmissionTier> $tiers
@@ -129,7 +138,7 @@ class Event extends Model implements HasMedia, LifecycleSubject, Sluggable, Tran
     public array $translatable = ['title', 'description', 'slug'];
 
     /** @var list<string> */
-    protected $hidden = ['online_url', 'meta'];
+    protected $hidden = ['organizer_type', 'online_url', 'meta'];
 
     /** @var array<string, mixed> */
     protected $attributes = [
@@ -147,6 +156,10 @@ class Event extends Model implements HasMedia, LifecycleSubject, Sluggable, Tran
                 $event->setAttribute('uuid', (string) Str::uuid7());
             }
         });
+
+        // media-library removes nothing when its owner goes: a force delete takes the poster with it
+        // (a soft delete keeps it for a restore).
+        static::forceDeleting(static fn (Event $event) => Posters::clear($event));
 
         // The local calendar dates are derived, so scopes can match "on this day" in each event's
         // own calendar without database timezone tables. ends_on is the inclusive last day.
@@ -316,6 +329,249 @@ class Event extends Model implements HasMedia, LifecycleSubject, Sluggable, Tran
     public function isFull(): bool
     {
         return $this->capacity !== null && $this->seats_taken >= $this->capacity;
+    }
+
+    /**
+     * The poster bucket: one image (jpeg, png, webp or avif) within the size and dimension
+     * limits, public by nature, with its queued webp variants (`events.poster.*`).
+     */
+    public function registerMediaBuckets(): void
+    {
+        $bucket = $this->addMediaBucket(EventsConfig::posterBucket())
+            ->singleFile()
+            ->acceptsMimeTypes(['image/jpeg', 'image/png', 'image/webp', 'image/avif'])
+            ->maxFileSize(EventsConfig::posterMaxKilobytes() * 1024)
+            ->minDimensions(EventsConfig::posterMinWidth(), EventsConfig::posterMinHeight())
+            ->public();
+
+        $disk = EventsConfig::posterDisk();
+
+        if ($disk !== null) {
+            $bucket->useDisk($disk);
+        }
+
+        $variants = EventsConfig::posterVariants();
+
+        if ($variants !== []) {
+            $bucket->registerVariants(static function (VariantRegistrar $registrar) use ($variants): void {
+                foreach ($variants as $variant) {
+                    $registrar->add($variant->name)
+                        ->width($variant->width)
+                        ->height($variant->height)
+                        ->fit('cover')
+                        ->format('webp')
+                        ->queued();
+                }
+            });
+        }
+    }
+
+    /**
+     * The poster, or null.
+     *
+     * @return Attribute<Media|null, never>
+     */
+    protected function poster(): Attribute
+    {
+        return Attribute::get(fn (): ?Media => Posters::of($this));
+    }
+
+    /**
+     * The poster's URL — a variant once generated, the original until then, and
+     * `events.poster.fallback_url` (or null) without a poster. Never throws.
+     */
+    public function posterUrl(string $variant = ''): ?string
+    {
+        return Posters::url($this, $variant);
+    }
+
+    // Discovery scopes. The API filters are built on them, so PHP and HTTP filter identically.
+
+    /**
+     * What `$viewer` may see (null = a guest): the policy's `view` as a query. Managers see
+     * their drafts and private events; a guest sees announced public and unlisted events.
+     *
+     * @param  Builder<static>  $query
+     */
+    public function scopeVisibleTo(Builder $query, ?Model $viewer): void
+    {
+        EventVisibility::scope($query, $viewer);
+    }
+
+    /**
+     * Listed: public events (unlisted and private ones never appear in lists).
+     *
+     * @param  Builder<static>  $query
+     */
+    public function scopeListed(Builder $query): void
+    {
+        $query->where($query->qualifyColumn('visibility'), Visibility::Public->value);
+    }
+
+    /**
+     * In any of the phases — mapped to the states of the configured lifecycle.
+     *
+     * @param  Builder<static>  $query
+     */
+    public function scopeInPhase(Builder $query, EventPhase ...$phases): void
+    {
+        $query->whereIn($query->qualifyColumn('status'), EventStates::valuesIn(...$phases));
+    }
+
+    /**
+     * Announced: every phase but Draft.
+     *
+     * @param  Builder<static>  $query
+     */
+    public function scopePublished(Builder $query): void
+    {
+        $this->scopeInPhase($query, EventPhase::Scheduled, EventPhase::Postponed, EventPhase::Rescheduled, EventPhase::Cancelled, EventPhase::Completed);
+    }
+
+    /**
+     * On: Scheduled or Rescheduled.
+     *
+     * @param  Builder<static>  $query
+     */
+    public function scopeActive(Builder $query): void
+    {
+        $this->scopeInPhase($query, EventPhase::Scheduled, EventPhase::Rescheduled);
+    }
+
+    /**
+     * @param  Builder<static>  $query
+     */
+    public function scopeAtVenue(Builder $query, Venue|int ...$venues): void
+    {
+        $query->whereIn($query->qualifyColumn('venue_id'), array_map(static fn (Venue|int $venue): int => $venue instanceof Venue ? $venue->getKey() : $venue, $venues));
+    }
+
+    /**
+     * Online only.
+     *
+     * @param  Builder<static>  $query
+     */
+    public function scopeOnline(Builder $query): void
+    {
+        $this->scopeWithAttendanceMode($query, AttendanceMode::Online);
+    }
+
+    /**
+     * Attended in person: at a venue, hybrid included.
+     *
+     * @param  Builder<static>  $query
+     */
+    public function scopeInPerson(Builder $query): void
+    {
+        $this->scopeWithAttendanceMode($query, AttendanceMode::Offline, AttendanceMode::Mixed);
+    }
+
+    /**
+     * @param  Builder<static>  $query
+     */
+    public function scopeWithAttendanceMode(Builder $query, AttendanceMode ...$modes): void
+    {
+        $query->whereIn($query->qualifyColumn('attendance_mode'), array_map(static fn (AttendanceMode $mode): string => $mode->value, $modes));
+    }
+
+    /**
+     * Organized by `$organizer` (co-hosted events excluded).
+     *
+     * @param  Builder<static>  $query
+     */
+    public function scopeOrganizedBy(Builder $query, Model $organizer): void
+    {
+        $query->where($query->qualifyColumn('organizer_type'), $organizer->getMorphClass())
+            ->where($query->qualifyColumn('organizer_id'), $organizer->getKey());
+    }
+
+    /**
+     * The events `$user` manages (as the organizer's or a co-host's approved user, or an admin) —
+     * the SQL form of the policy, drafts included.
+     *
+     * @param  Builder<static>  $query
+     */
+    public function scopeManagedBy(Builder $query, Model $user): void
+    {
+        EventManagers::scope($query, $user);
+    }
+
+    /**
+     * Events `$attendee` is going to.
+     *
+     * @param  Builder<static>  $query
+     */
+    public function scopeAttendedBy(Builder $query, Model $attendee): void
+    {
+        $this->constrainToRsvpOf($query, $attendee, RsvpStatus::Going);
+    }
+
+    /**
+     * Events `$attendee` is interested in.
+     *
+     * @param  Builder<static>  $query
+     */
+    public function scopeInterestedBy(Builder $query, Model $attendee): void
+    {
+        $this->constrainToRsvpOf($query, $attendee, RsvpStatus::Interested);
+    }
+
+    /**
+     * Free to attend: no ticket type with a price.
+     *
+     * @param  Builder<static>  $query
+     */
+    public function scopeFree(Builder $query): void
+    {
+        $query->whereDoesntHave('tiers', static fn (Builder $tiers): Builder => $tiers->whereNotNull('price'));
+    }
+
+    /**
+     * Seats left under the event's capacity (or no capacity).
+     *
+     * @param  Builder<static>  $query
+     */
+    public function scopeWithSeatsAvailable(Builder $query): void
+    {
+        $query->where(static fn (Builder $seats): Builder => $seats
+            ->whereNull($seats->qualifyColumn('capacity'))
+            ->orWhereColumn($seats->qualifyColumn('seats_taken'), '<', $seats->qualifyColumn('capacity')));
+    }
+
+    /**
+     * Title or description contains the term, in any locale, case-insensitively — LIKE wildcards
+     * escaped, driver-correct. A blank term adds no constraint.
+     *
+     * @param  Builder<static>  $query
+     */
+    public function scopeSearch(Builder $query, string $term): void
+    {
+        if (trim($term) === '') {
+            return;
+        }
+
+        Translations::search($query, new TranslationSearch(['title', 'description'], trim($term)));
+    }
+
+    /**
+     * Most people going first, then the soonest.
+     *
+     * @param  Builder<static>  $query
+     */
+    public function scopePopular(Builder $query): void
+    {
+        $query->orderByDesc($query->qualifyColumn('going_count'))->orderBy($query->qualifyColumn('starts_at'));
+    }
+
+    /**
+     * @param  Builder<static>  $query
+     */
+    private function constrainToRsvpOf(Builder $query, Model $attendee, RsvpStatus $status): void
+    {
+        $query->whereHas('rsvps', static fn (Builder $rsvps): Builder => $rsvps
+            ->where('attendee_type', $attendee->getMorphClass())
+            ->where('attendee_id', $attendee->getKey())
+            ->where('status', $status->value));
     }
 
     // Time scopes: every comparison binds a UTC string (Clock), never an app-timezone Carbon.

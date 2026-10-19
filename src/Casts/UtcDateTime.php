@@ -35,8 +35,14 @@ final class UtcDateTime implements CastsAttributes
             return CarbonImmutable::instance($value)->utc();
         }
 
+        $value = (string) $value;
+
         try {
-            $parsed = CarbonImmutable::createFromFormat(Clock::FORMAT, substr((string) $value, 0, 19), 'UTC');
+            // A stored value (`Y-m-d H:i:s`, maybe with fractions) is UTC. During toArray(),
+            // Eloquent hands a timestamp column back already serialized (ISO-8601 with its offset).
+            $parsed = str_contains($value, 'T')
+                ? CarbonImmutable::parse($value)->utc()
+                : CarbonImmutable::createFromFormat(Clock::FORMAT, substr($value, 0, 19), 'UTC');
         } catch (Throwable) {
             $parsed = null;
         }

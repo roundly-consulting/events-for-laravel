@@ -78,4 +78,9 @@ final class InvalidEventException extends EventsException
     {
         return self::make('invalid_event', 422, ['slug' => $slug], 'event_slug_taken');
     }
+
+    public static function finished(): self
+    {
+        return self::make('invalid_event', 422, [], 'event_finished');
+    }
 }

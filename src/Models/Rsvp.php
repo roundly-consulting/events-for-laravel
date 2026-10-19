@@ -70,7 +70,10 @@ class Rsvp extends Model
     protected $guarded = [];
 
     /** @var list<string> */
-    protected $hidden = ['check_in_code', 'check_in_code_hash', 'payment_url', 'meta'];
+    protected $hidden = [
+        'attendee_type', 'checked_in_by_type', 'added_by_type', 'removed_by_type',
+        'check_in_code', 'check_in_code_hash', 'payment_url', 'meta',
+    ];
 
     /** @var array<string, mixed> */
     protected $attributes = [

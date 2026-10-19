@@ -7,6 +7,8 @@ use RoundlyConsulting\Events\Models\AdmissionTier;
 use RoundlyConsulting\Events\Models\Event;
 use RoundlyConsulting\Events\Models\Rsvp;
 use RoundlyConsulting\Events\Models\Venue;
+use RoundlyConsulting\Events\Policies\EventPolicy;
+use RoundlyConsulting\Events\Policies\VenuePolicy;
 
 return [
 
@@ -95,6 +97,117 @@ return [
 
     'attendees' => [
         'user' => 'App\\Models\\User',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Defaults
+    |--------------------------------------------------------------------------
+    |
+    | What a new event gets when the builder or DTO leaves a setting out. `timezone` falls back
+    | to the venue's, then to `app.timezone`; `duration` (ISO-8601) applies without an end, so
+    | ends_at is never null.
+    |
+    */
+
+    'defaults' => [
+        'timezone' => env('EVENTS_TIMEZONE'),
+        'duration' => 'PT2H',
+        'visibility' => 'public',
+        'max_guests' => 0,
+        'guest_list' => 'hidden',
+        'show_counts' => true,
+        'waitlist' => true,
+    ],
+
+    'schedule' => [
+        // The longest event (ISO-8601). Longer runs wait for recurring series.
+        'max_duration' => 'P31D',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Venues and geography
+    |--------------------------------------------------------------------------
+    |
+    | Geocoding is opt-in: `->geocode()` on the builder, `Events::venues()->geocode()`, or
+    | `geocode_on_create` to queue it for every new venue without coordinates. It never sets
+    | the timezone (geocoding returns none): a venue without one takes `default_timezone`,
+    | else the app's.
+    |
+    */
+
+    'venues' => [
+        'geocode_on_create' => env('EVENTS_GEOCODE_VENUES', 'off'),
+        'default_timezone' => null,
+    ],
+
+    'geo' => [
+        'max_radius_km' => 500,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Ticket types
+    |--------------------------------------------------------------------------
+    |
+    | A price given as a plain number (`->price('15')`) is read in this currency; blank uses
+    | money-for-laravel's `money.default_currency`.
+    |
+    */
+
+    'tiers' => [
+        'default_currency' => env('EVENTS_DEFAULT_CURRENCY'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Poster
+    |--------------------------------------------------------------------------
+    |
+    | One image per event in a media-library bucket. Variants are queued (media generates
+    | them synchronously by default); `posterUrl('card')` falls back to the original until a
+    | variant exists, and to `fallback_url` without a poster. `disk` blank = media's default.
+    |
+    */
+
+    'poster' => [
+        'bucket' => 'poster',
+        'disk' => null,
+        'max_kb' => 10240,
+        'min_width' => 600,
+        'min_height' => 315,
+        'fallback_url' => env('EVENTS_POSTER_FALLBACK'),
+        'variants' => [
+            'thumb' => [400, 300],
+            'card' => [800, 450],
+            'square' => [1200, 1200],
+            'landscape' => [1200, 900],
+            'wide' => [1920, 1080],
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Authorization
+    |--------------------------------------------------------------------------
+    |
+    | The policy decides who views and manages events. Managers are the organizer's approved
+    | users, co-hosts' approved users, and holders of the `admin` ability (undefined = nobody).
+    | `create` / `venues` name a Gate ability that may create events / venues; null lets any
+    | authenticated user.
+    |
+    */
+
+    'authorization' => [
+        'register_policy' => true,
+        'policy' => EventPolicy::class,
+        'venue_policy' => VenuePolicy::class,
+        'abilities' => [
+            'create' => null,
+            'admin' => 'events.admin',
+            'venues' => null,
+        ],
     ],
 
     /*

@@ -22,6 +22,7 @@ return [
     'event_invalid_visibility' => 'Viditeľnosť „:value“ nie je verejná, len cez odkaz ani súkromná.',
     'event_not_an_organizer' => 'Tento model nemôže organizovať podujatia.',
     'event_invalid_datetime' => 'Hodnota :attribute nie je dátum a čas.',
+    'event_finished' => 'Podujatie sa skončilo, už sa nedá meniť.',
     'event_slug_taken' => 'Slug „:slug“ je už obsadený.',
 
     'schedule_start_required' => 'Podujatie musí mať čas začiatku.',

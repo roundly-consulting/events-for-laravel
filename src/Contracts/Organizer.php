@@ -35,7 +35,9 @@ interface Organizer
      * Narrow a query of this model's own table to the rows that let `$user` manage — the query
      * form of {@see self::allowsEventManagementBy()}.
      *
-     * @param  Builder<Model>  $query
+     * @template TModel of Model
+     *
+     * @param  Builder<TModel>  $query
      */
     public function scopeManagingEventsFor(Builder $query, Model $user): void;
 }

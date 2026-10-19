@@ -14,11 +14,14 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use RoundlyConsulting\Events\Casts\UtcDateTime;
 use RoundlyConsulting\Events\Concerns\StoresUtcTimestamps;
 use RoundlyConsulting\Events\Database\Factories\VenueFactory;
+use RoundlyConsulting\Events\Exceptions\InvalidVenueException;
+use RoundlyConsulting\Events\Support\DistanceExpression;
 use RoundlyConsulting\Events\Support\EventModels;
 use RoundlyConsulting\Events\Support\EventsConfig;
 use RoundlyConsulting\Events\Support\VenueSlugs;
 use RoundlyConsulting\Geolocation\Concerns\HasLocation;
 use RoundlyConsulting\Geolocation\DataTransferObjects\Coordinates;
+use RoundlyConsulting\PackageToolkit\Support\RawExpression;
 use RoundlyConsulting\Sluggable\Concerns\HasSlug;
 use RoundlyConsulting\Sluggable\Contracts\Sluggable;
 use RoundlyConsulting\Sluggable\Definitions\SlugOptions;
@@ -72,7 +75,7 @@ class Venue extends Model implements Sluggable, Translatable
     public array $translatable = ['name'];
 
     /** @var list<string> */
-    protected $hidden = ['meta'];
+    protected $hidden = ['owner_type', 'meta'];
 
     public function getTable(): string
     {
@@ -122,6 +125,26 @@ class Venue extends Model implements Sluggable, Translatable
     public function scopeOwnedBy(Builder $query, Model $owner): void
     {
         $query->where('owner_type', $owner->getMorphClass())->where('owner_id', $owner->getKey());
+    }
+
+    /**
+     * Within `$km` of a point: geolocation's bounding box pre-filters on the coordinates index,
+     * then the exact great-circle distance decides. Venues without coordinates never match.
+     *
+     * @param  Builder<static>  $query
+     */
+    public function scopeNear(Builder $query, Coordinates $point, float $km): void
+    {
+        $max = EventsConfig::maxRadiusKm();
+
+        if ($km <= 0 || $km > $max) {
+            throw InvalidVenueException::invalidRadius((string) $max);
+        }
+
+        $distance = DistanceExpression::for($this->getConnection(), $query->qualifyColumn('latitude'), $query->qualifyColumn('longitude'), $point);
+
+        $this->scopeWithinRadius($query, $point, $km);
+        $query->whereRaw(new RawExpression($distance->sql.' <= ?'), [...$distance->bindings, $km]);
     }
 
     /**

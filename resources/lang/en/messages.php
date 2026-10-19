@@ -22,6 +22,7 @@ return [
     'event_invalid_visibility' => 'The visibility ":value" is not public, unlisted or private.',
     'event_not_an_organizer' => 'This model cannot organize events.',
     'event_invalid_datetime' => 'The :attribute value is not a date and time.',
+    'event_finished' => 'The event is over; it can no longer change.',
     'event_slug_taken' => 'The slug ":slug" is already taken.',
 
     'schedule_start_required' => 'The event needs a start time.',

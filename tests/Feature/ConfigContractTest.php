@@ -11,7 +11,16 @@ use Illuminate\Foundation\Application;
 it('ships exactly the config keys it reads', function (): void {
     expect(__DIR__.'/../../config/events.php')->toSatisfyConfigContract(
         [__DIR__.'/../../src', __DIR__.'/../../database'],
-        ['allowUnread' => ['events.organizers.user', 'events.attendees.user']],
+        ['allowUnread' => [
+            // Host-filled maps, read whole (alias => class, variant => [width, height]).
+            'events.organizers.user',
+            'events.attendees.user',
+            'events.poster.variants.thumb',
+            'events.poster.variants.card',
+            'events.poster.variants.square',
+            'events.poster.variants.landscape',
+            'events.poster.variants.wide',
+        ]],
     );
 });
 

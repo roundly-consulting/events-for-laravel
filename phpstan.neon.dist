@@ -4,6 +4,10 @@ parameters:
         - src
         - database
         - config
+        # Host-model traits are analysed only where a class uses them.
+        - tests/Fixtures/Models/User.php
+        - tests/Fixtures/Models/Team.php
+        - tests/Fixtures/Models/Guest.php
     # This package ships its own config/ dir; env() is correct there.
     configDirectories:
         - config

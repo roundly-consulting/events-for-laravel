@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use RoundlyConsulting\Events\Facades\Events;
 use RoundlyConsulting\Events\Models\Event;
 use RoundlyConsulting\Events\Models\Venue;
 
@@ -27,6 +28,16 @@ test('slugs_are_stable_and_per_locale', function (): void {
     $third = Event::factory()->create(['title' => ['en' => 'Jazz Night']]);
 
     expect($third->getTranslation('slug', 'en'))->toBe('jazz-night-3');
+
+    // Lookups resolve along the locale chain: a Slovak slug finds the event in English too.
+    $published = Event::factory()->published()->create(['title' => ['en' => 'Folk Night', 'sk' => 'Ľudový večer']]);
+
+    expect(Events::findBySlug('folk-night')?->is($published))->toBeTrue()
+        ->and(Events::findBySlug('ludovy-vecer')?->is($published))->toBeTrue()
+        ->and(Events::findBySlug('no-such-night'))->toBeNull();
+
+    app()->setLocale('sk');
+    expect(Events::findBySlug('ludovy-vecer')?->is($published))->toBeTrue();
 });
 
 it('slugs a venue once from its fallback-locale name', function (): void {

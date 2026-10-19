@@ -8,12 +8,15 @@ use RoundlyConsulting\Events\Models\AdmissionTier;
 use RoundlyConsulting\Events\Models\Event;
 use RoundlyConsulting\Events\Models\Rsvp;
 use RoundlyConsulting\Events\Models\Venue;
+use RoundlyConsulting\Events\Policies\EventPolicy;
+use RoundlyConsulting\Events\Policies\VenuePolicy;
 use RoundlyConsulting\Testing\Arch\ArchPresets;
 
 ArchPresets::strictTypes('RoundlyConsulting\Events');
 
 // Deliberately non-final: the four swappable models (a host subclasses them), the manager
-// (EventsFake extends it) and the shipped lifecycle (a host extends it to add a step).
+// (EventsFake extends it), the shipped lifecycle (a host extends it to add a step) and the two
+// swappable policies.
 ArchPresets::finalByDefault('RoundlyConsulting\Events', [
     Event::class,
     Venue::class,
@@ -21,6 +24,8 @@ ArchPresets::finalByDefault('RoundlyConsulting\Events', [
     Rsvp::class,
     EventsManager::class,
     EventLifecycle::class,
+    EventPolicy::class,
+    VenuePolicy::class,
 ]);
 
 ArchPresets::swappableModelsAreNotFinal([

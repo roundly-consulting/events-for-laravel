@@ -50,7 +50,7 @@ final class EventInvitation extends Model
     protected $guarded = [];
 
     /** @var list<string> */
-    protected $hidden = ['token_hash'];
+    protected $hidden = ['invitee_type', 'invited_by_type', 'token_hash'];
 
     /**
      * The plain token, set only on the instance `send()` returns — never stored, never loaded.
