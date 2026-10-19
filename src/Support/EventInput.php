@@ -104,7 +104,7 @@ final class EventInput
     }
 
     /**
-     * Per-event reminder offsets: at most five ISO-8601 durations, each at least five minutes.
+     * Per-event reminder offsets: at most five ISO-8601 durations, each between five minutes and 31 days.
      *
      * @param  list<string>|null  $offsets
      * @return list<string>|null
