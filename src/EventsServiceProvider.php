@@ -4,45 +4,38 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Events;
 
+use RoundlyConsulting\Events\Support\LifecycleCheck;
+use RoundlyConsulting\PackageToolkit\Concerns\RegistersBlueprintMacros;
 use RoundlyConsulting\PackageToolkit\Package;
 use RoundlyConsulting\PackageToolkit\PackageServiceProvider;
-use RoundlyConsulting\PackageToolkit\Support\Config;
 
 final class EventsServiceProvider extends PackageServiceProvider
 {
+    use RegistersBlueprintMacros;
+
     public function configurePackage(Package $package): void
     {
         $package
             ->name('events')
             ->hasConfigFile()
-            // Read every setting through the toolkit's strict Config readers — boolean(),
-            // integer(), oneOf() / enum(), requireString() — never a cast or a truthiness check:
-            // env() leaves `off`/`no` as non-empty (truthy) strings, `(int) 'five'` is 0, and a
-            // typo must throw naming the key instead of falling back to a default. A blank value
-            // (a host's `KEY=`) is not set: the readers return the default, exactly as if absent.
-            ->contributesToAbout(static fn (): array => [
-                'Enabled' => Config::boolean('events.enabled', true) ? 'YES' : 'NO',
-                'Timeout' => Config::integer('events.timeout', 30, min: 1, max: 300).'s',
-                'Mode' => Config::oneOf('events.mode', ['sync', 'queue'], 'sync'),
-            ]);
-
-        // Grow this as the package grows:
-        //   ->hasMigrations()
-        //   ->hasCommands([SomeCommand::class])
-        //   ->hasViews() / ->hasTranslations()
-        //   ->hasRoutes('events.php')
-        // See RoundlyConsulting\PackageToolkit\Package for the full fluent API.
-        //
-        // The Events facade's global alias is declared in composer.json
-        // (extra.laravel.aliases), not here — the skill's facade rule, and package discovery
-        // registers it without booting any code.
+            ->hasMigrations()
+            ->hasTranslations();
     }
 
     public function register(): void
     {
         parent::register();
 
-        // Container bindings (bind/singleton/scoped) go here — never in boot().
         $this->app->singleton(EventsManager::class);
+        $this->app->singleton(LifecycleCheck::class);
+    }
+
+    public function boot(): void
+    {
+        parent::boot();
+
+        // The migrations use the toolkit's key-type macros; lifecycle, tags, translatable,
+        // sluggable and money register theirs from their own providers.
+        $this->registerBlueprintMacros();
     }
 }

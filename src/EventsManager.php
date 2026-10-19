@@ -5,43 +5,19 @@ declare(strict_types=1);
 namespace RoundlyConsulting\Events;
 
 use Illuminate\Contracts\Container\Container;
-use RoundlyConsulting\Events\Actions\ExampleEventsAction;
-use RoundlyConsulting\Events\DataTransferObjects\ExampleEventsData;
 
 /**
- * The package's public API: the root behind the Events facade, injectable by its
- * own class-string. Bound as a singleton in EventsServiceProvider::register().
+ * The package's public API: the root behind the `Events` facade, injectable by its own
+ * class-string (a container singleton). Every method is thin — the behaviour lives in the
+ * actions, each resolved through the container on every call, so host overrides and
+ * `Events::fake()` apply.
  *
- * Follows the `laravel-package-developer` skill section
- * "Public API: Actions → Manager → Facade (REQUIRED)":
- *
- *  - Every method is thin — resolve one action through the container and call `execute()`.
- *    Never `new` an action, so host container overrides and the fake both apply.
- *  - Flat methods for the core verbs; a small `final readonly` sub-accessor per sub-area once
- *    there are two or more; `for($model)` for a model-scoped handle.
- *  - Every host-facing action (no `@internal`) must be reachable from here.
- *  - Model traits and model methods call this manager (`app(EventsManager::class)`),
- *    never an action — so the fake sees them too.
- *
- * Not final on purpose: EventsFake extends it, so code that constructor-injects this
- * class still type-checks under `Events::fake()`. The arch test exempts it from
- * `finalByDefault` by name.
- *
- * Exempt shapes — a pure trait, a per-request static builder, package-author or dev-only
- * tooling — have no host-facing stateful behaviour: delete this manager, the facade, the fake,
- * the example action and FacadeTest, and say why in one README line.
+ * Not final on purpose: EventsFake extends it, so an injected manager still type-checks under
+ * `Events::fake()`.
  */
 class EventsManager
 {
     public function __construct(
         protected readonly Container $container,
     ) {}
-
-    /**
-     * REPLACE ME — rename after the real verb the action performs.
-     */
-    public function example(ExampleEventsData $data): string
-    {
-        return $this->container->make(ExampleEventsAction::class)->execute($data);
-    }
 }

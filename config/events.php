@@ -2,65 +2,114 @@
 
 declare(strict_types=1);
 
+use RoundlyConsulting\Events\Lifecycle\EventLifecycle;
+use RoundlyConsulting\Events\Models\AdmissionTier;
+use RoundlyConsulting\Events\Models\Event;
+use RoundlyConsulting\Events\Models\Rsvp;
+use RoundlyConsulting\Events\Models\Venue;
+
 return [
 
     /*
     |--------------------------------------------------------------------------
-    | Enabled
+    | Key types
     |--------------------------------------------------------------------------
     |
-    | Placeholder setting so the service provider has something real to merge,
-    | publish, and report via `php artisan about`. Replace with the package's
-    | real configuration — every key here must be read somewhere under src/,
-    | and ConfigContractTest enforces both directions.
-    |
-    | Pass env values through raw — never `(bool) env()` or `filter_var()` —
-    | and read them with the toolkit's `Config::boolean()`: a typo then throws
-    | naming the key instead of silently becoming true or false. The false
-    | spellings are false/0/off/no.
-    |
-    | Blank means not set: a host's `EVENTS_ENABLED=` (an empty or
-    | whitespace-only value) reads exactly like an absent key, so the default
-    | applies. The same holds for every key below.
+    | `primary_key_type` is the events table's own key (bigint, uuid or ulid). Lifecycle,
+    | tags, media and slug history point at it, so keep it equal to `lifecycle.key_type` and
+    | `tags.key_type`. `key_type` is the key of YOUR models the package points at — organizers,
+    | attendees, co-hosts, invitees, venue owners, actors — so it must equal your users' key
+    | type (and `lifecycle.actor_key_type`). Set both before migrating.
     |
     */
 
-    'enabled' => env('EVENTS_ENABLED', true),
+    'primary_key_type' => env('EVENTS_PRIMARY_KEY_TYPE', 'bigint'),
+
+    'key_type' => env('EVENTS_KEY_TYPE', 'bigint'),
 
     /*
     |--------------------------------------------------------------------------
-    | Timeout (an integer setting)
+    | Tables
     |--------------------------------------------------------------------------
     |
-    | Placeholder showing how every number is read. Pass the env through raw —
-    | never `(int) env()`, `intval()` or an `is_numeric() ? … : default` guard,
-    | which turn `five` into 0 (a timeout of none) — and read it with
-    | `Config::integer($key, $default, min: …, max: …)`. An int or a canonical
-    | integer string (`'30'`) passes; `'five'`, `'5.5'`, `'30s'` or a value out
-    | of range throws naming the key. A key that is not set — absent, null or
-    | blank (`EVENTS_TIMEOUT=`) — takes the default. Bound every
-    | number by its domain: a timeout or TTL of 0 must be impossible unless 0
-    | means something and is documented.
+    | `events` is a common table name (analytics, event sourcing). Rename any of these
+    | before migrating if your app already has one; every index has its own short name.
     |
     */
 
-    'timeout' => env('EVENTS_TIMEOUT', 30),
+    'tables' => [
+        'events' => 'events',
+        'venues' => 'event_venues',
+        'tiers' => 'event_admission_tiers',
+        'rsvps' => 'event_rsvps',
+        'hosts' => 'event_hosts',
+        'invitations' => 'event_invitations',
+        'reminder_deliveries' => 'event_reminder_deliveries',
+    ],
 
     /*
     |--------------------------------------------------------------------------
-    | Mode (a fixed vocabulary)
+    | Models
     |--------------------------------------------------------------------------
     |
-    | Placeholder showing how a setting with a fixed set of values is read:
-    | `Config::oneOf($key, ['sync', 'queue'], 'sync')`, or — once the package
-    | has a backed enum for it — `Config::enum($key, Mode::class, Mode::Sync)`.
-    | Never `Enum::tryFrom(config(…)) ?? Default`, `in_array() ? … : default`
-    | or `=== 'queue' ? A : B`: a typo must throw, listing the allowed values,
-    | not quietly become the default. A blank `EVENTS_MODE=` is not
-    | set and takes the default.
+    | Swap a model by extending the packaged class and naming your subclass here.
     |
     */
 
-    'mode' => env('EVENTS_MODE', 'sync'),
+    'models' => [
+        'event' => Event::class,
+        'venue' => Venue::class,
+        'tier' => AdmissionTier::class,
+        'rsvp' => Rsvp::class,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Lifecycle
+    |--------------------------------------------------------------------------
+    |
+    | The status workflow: a lifecycle-for-laravel definition implementing
+    | RoundlyConsulting\Events\Contracts\EventLifecycle, whose states implement
+    | RoundlyConsulting\Events\Contracts\EventState. Extend the shipped one to add a step
+    | (an approval before publishing, say).
+    |
+    */
+
+    'lifecycle' => EventLifecycle::class,
+
+    /*
+    |--------------------------------------------------------------------------
+    | Organizers and attendees
+    |--------------------------------------------------------------------------
+    |
+    | Your models that organize events (they implement Contracts\Organizer, e.g. through
+    | Concerns\OrganizesEvents) and that RSVP (Concerns\AttendsEvents), by the short alias the
+    | JSON API accepts (`{"type": "user", "id": 1}`) — never a class name over the wire.
+    | Organizers listed here also decide who manages an event (the `managedBy()` scope).
+    |
+    */
+
+    'organizers' => [
+        'user' => 'App\\Models\\User',
+    ],
+
+    'attendees' => [
+        'user' => 'App\\Models\\User',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Slugs
+    |--------------------------------------------------------------------------
+    |
+    | One slug per locale, stable once set. With `history` on, a changed slug keeps working
+    | and redirects (needs sluggable's slug_history table: publish `sluggable-migrations`).
+    |
+    */
+
+    'slugs' => [
+        'history' => env('EVENTS_SLUG_HISTORY', 'off'),
+        'max_length' => 120,
+    ],
 
 ];
