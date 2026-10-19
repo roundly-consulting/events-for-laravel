@@ -24,6 +24,7 @@ use RoundlyConsulting\Events\Facades\Events;
 use RoundlyConsulting\Events\Jobs\RequestAdmissionPaymentJob;
 use RoundlyConsulting\Events\Models\Event;
 use RoundlyConsulting\Events\Models\Rsvp;
+use RoundlyConsulting\Events\Notifications\RsvpConfirmedNotification;
 use RoundlyConsulting\Events\Notifications\WaitlistPromotedNotification;
 use RoundlyConsulting\Events\Tests\Fixtures\Models\User;
 use RoundlyConsulting\Events\Tests\Fixtures\Payments\FakePaymentCollector;
@@ -481,4 +482,75 @@ test('a_repeated_identical_reference_counts_as_stored', function (): void {
     expect($request?->reference)->toBe('cs_'.$held->getKey())
         ->and($held->fresh()?->payment_reference)->toBe('cs_'.$held->getKey());
     EventBus::assertNotDispatched(RsvpPaymentRequestDiscarded::class);
+});
+
+test('a_late_payment_after_the_start_is_refused_for_a_refund', function (): void {
+    Notification::fake();
+    $event = paidEvent();
+    $rsvp = Events::for($event)->rsvp(User::factory()->create())->going(tier: 'supporter');
+    $reference = (string) $rsvp->payment_reference;
+
+    // The webhook arrives three days after the event ended (REPRO-9), and right at the start.
+    foreach ([$event->ends_at->addDays(3), $event->starts_at] as $at) {
+        Scenarios::freeze($at->format('Y-m-d H:i:s'));
+        Events::sweep();
+
+        expect(fn () => Events::rsvps()->confirmPayment($reference))->toThrow(RsvpClosedException::class);
+        expect($rsvp->fresh()?->status)->toBe(RsvpStatus::Expired)
+            ->and($rsvp->fresh()?->checkInCode())->toBeNull();
+    }
+
+    Notification::assertNotSentTo($rsvp->attendee, RsvpConfirmedNotification::class);
+});
+
+test('a_late_payment_on_a_completed_event_is_refused', function (): void {
+    $event = paidEvent();
+    $lapsed = Events::for($event)->rsvp(User::factory()->create())->going(tier: 'supporter');
+    // A hold a host's own flow kept open past the start.
+    $open = Events::for($event)->rsvp(User::factory()->create())->going(tier: 'supporter');
+    Scenarios::freeze($event->starts_at->addMinutes(30)->format('Y-m-d H:i:s'));
+    Events::for($event)->complete();
+    Rsvp::query()->whereKey($open->getKey())->update(['held_until' => $event->ends_at->addDay()->format('Y-m-d H:i:s')]);
+
+    expect(fn () => Events::rsvps()->confirmPayment((string) $lapsed->payment_reference))->toThrow(RsvpClosedException::class)
+        ->and(fn () => Events::rsvps()->confirmPayment((string) $open->payment_reference))->toThrow(RsvpClosedException::class)
+        ->and($open->fresh()?->status)->toBe(RsvpStatus::Held);
+});
+
+test('a_late_payment_before_the_start_still_takes_a_free_seat', function (): void {
+    $event = paidEvent();
+    $rsvp = Events::for($event)->rsvp(User::factory()->create())->going(tier: 'supporter');
+
+    Scenarios::freeze($event->starts_at->subMinute()->format('Y-m-d H:i:s'));
+    $late = Events::rsvps()->confirmPayment((string) $rsvp->payment_reference);
+
+    expect($late->status)->toBe(RsvpStatus::Going)
+        ->and($late->checkInCode())->not->toBeNull();
+
+    // A repeat after the start stays an idempotent no-op on the going RSVP.
+    Scenarios::freeze($event->ends_at->addDay()->format('Y-m-d H:i:s'));
+    expect(Events::rsvps()->confirmPayment((string) $rsvp->payment_reference)->status)->toBe(RsvpStatus::Going);
+});
+
+test('a_manager_confirms_a_lapsed_hold_at_the_door_after_the_start', function (): void {
+    $organizer = User::factory()->create();
+    $event = Scenarios::event(capacity: 5, organizer: $organizer);
+    Events::for($event)->tiers()->add('Supporter', price: Money::ofMajor('15', 'EUR'), key: 'supporter');
+    $rsvp = Events::for($event)->rsvp(User::factory()->create())->going(tier: 'supporter');
+
+    Scenarios::freeze($event->starts_at->addMinutes(20)->format('Y-m-d H:i:s'));
+    $confirmed = Events::for($event)->by($organizer)->attendees()->confirm($rsvp, 'cash-7');
+
+    expect($confirmed->status)->toBe(RsvpStatus::Going)
+        ->and($confirmed->payment_reference)->toBe('cash-7');
+});
+
+test('a_manager_cannot_confirm_on_a_cancelled_event', function (): void {
+    $event = paidEvent();
+    $rsvp = Events::for($event)->rsvp(User::factory()->create())->going(tier: 'supporter');
+    Events::for($event)->cancel();
+
+    expect(fn () => Events::for($event)->attendees()->confirm($rsvp, 'cash-8'))->toThrow(RsvpClosedException::class)
+        ->and(fn () => Events::rsvps()->confirm($rsvp->fresh() ?? $rsvp))->toThrow(RsvpClosedException::class)
+        ->and($rsvp->fresh()?->status)->toBe(RsvpStatus::Expired);
 });

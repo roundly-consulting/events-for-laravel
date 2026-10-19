@@ -12,6 +12,7 @@ use RoundlyConsulting\Events\Exceptions\RsvpClosedException;
 use RoundlyConsulting\Events\Exceptions\RsvpHoldExpiredException;
 use RoundlyConsulting\Events\Exceptions\RsvpNotFoundException;
 use RoundlyConsulting\Events\Models\Rsvp;
+use RoundlyConsulting\Events\Support\Clock;
 use RoundlyConsulting\Events\Support\EventModels;
 use RoundlyConsulting\Events\Support\EventTransaction;
 use RoundlyConsulting\Events\Support\RsvpRules;
@@ -21,10 +22,12 @@ use RoundlyConsulting\Events\Support\SeatBook;
  * Your payment webhook confirms a held RSVP by its checkout reference: held → going (a check-in
  * code is issued). Idempotent: a repeat on a going RSVP changes nothing.
  *
- * A late payment (the hold lapsed) takes a free seat again, else `RsvpHoldExpiredException` — as
- * for an attendee who declined while held, who is never put back. An unknown reference, or one a
- * newer hold replaced, is `RsvpNotFoundException`; a cancelled event is `RsvpClosedException`. In
- * each of those cases, refund the payment. A postponed event still confirms: the seat existed.
+ * A late payment (the hold lapsed) takes a free seat again — only before the event starts, since
+ * RSVPs freeze at the start — else `RsvpHoldExpiredException` (no seat; as for an attendee who
+ * declined while held, who is never put back) or `RsvpClosedException` (from the start on, and on
+ * a completed event). An unknown reference, or one a newer hold replaced, is
+ * `RsvpNotFoundException`; a cancelled event is `RsvpClosedException`. In each of those cases,
+ * refund the payment. A postponed event still confirms: the seat existed.
  */
 final readonly class ConfirmPaymentAction
 {
@@ -58,6 +61,13 @@ final readonly class ConfirmPaymentAction
             $this->holds->execute($book);
             $rsvp->refresh();
             $tierId = $rsvp->tier_id === null ? null : (int) $rsvp->tier_id;
+
+            // After the event a seat is a refund case, never a late admission (holds end at the
+            // start, so a lapsed one is all a webhook can find there).
+            if ($event->phase === EventPhase::Completed
+                || ($rsvp->status === RsvpStatus::Expired && ! Clock::now()->lessThan($event->starts_at))) {
+                throw RsvpClosedException::started();
+            }
 
             return match ($rsvp->status) {
                 RsvpStatus::Held => $this->seats->execute($book, $rsvp, RsvpStatus::Going, $rsvp->guests, $tierId),
