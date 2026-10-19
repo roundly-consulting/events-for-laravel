@@ -76,8 +76,8 @@ $event = Events::make(['en' => 'Jazz Night', 'sk' => 'Jazzový večer'])
 $rsvp = Events::for($event)->rsvp($attendee)->going(tier: 'free');
 $rsvp->isGoing();                                   // or isWaitlisted(), isHeld()
 
-// At the door: scan the attendee's QR code
-$result = Events::for($event)->checkIn($scannedCode);
+// At the door: scan the attendee's QR code, as the signed-in staff member
+$result = Events::for($event)->by($doorStaff)->checkIn($scannedCode);   // organizers and co-hosts only
 $result->firstCheckIn;                              // false if the code was already used
 
 // Discovery: upcoming published events (cancelled ones flagged by phase) within 25 km, nearest first

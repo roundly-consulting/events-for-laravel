@@ -31,6 +31,7 @@ test('readme_example_runs', function (): void {
     Storage::fake('local');
 
     $user = User::factory()->create();
+    $doorStaff = $user;   // the organizer scans at the door
     $attendee = User::factory()->create();
     $here = new Coordinates(48.1486, 17.1077);
     $request = Request::create('/events', 'POST', files: ['poster' => UploadedFile::fake()->image('poster.jpg', 1200, 900)]);
@@ -57,7 +58,8 @@ test('readme_example_runs', function (): void {
         ->and($event->poster)->not->toBeNull()
         ->and($event->tiers()->pluck('key')->all())->toBe(['free', 'supporter'])
         ->and($rsvp->isGoing())->toBeTrue()
-        ->and($result->firstCheckIn)->toBeTrue();
+        ->and($result->firstCheckIn)->toBeTrue()
+        ->and($result->rsvp->checked_in_by_id)->toBe($doorStaff->getKey());
 
     // The discovery line, again with its result kept: the event is 1 km away.
     $nearby = Events::browse()->upcoming()->near($here, km: 25)->orderByDistance($here)->paginate();
