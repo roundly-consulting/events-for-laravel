@@ -7,6 +7,7 @@ namespace RoundlyConsulting\Events\Http\Resources;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use RoundlyConsulting\Events\Models\AdmissionTier;
+use RoundlyConsulting\Money\Http\Resources\MoneyResource;
 
 /**
  * A ticket type. `hidden` is shown to managers only (the only ones who ever see hidden types).
@@ -37,7 +38,7 @@ final class AdmissionTierResource extends JsonResource
             'key' => $tier->key,
             'name' => $tier->name,
             'description' => $tier->description,
-            'price' => $tier->price === null ? null : (new MoneyResource($tier->price))->resolve($request),
+            'price' => MoneyResource::from($tier->price)?->resolve($request),
             'free' => $tier->isFree(),
             'capacity' => $tier->capacity,
             'seats_left' => $tier->seatsLeft(),

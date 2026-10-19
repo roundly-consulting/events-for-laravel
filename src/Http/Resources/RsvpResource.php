@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\Route;
 use RoundlyConsulting\Events\Models\Rsvp;
+use RoundlyConsulting\Money\Http\Resources\MoneyResource;
 
 /**
  * An RSVP in one of two views. The owner's own view carries the check-in code and the QR URL;
@@ -46,7 +47,7 @@ final class RsvpResource extends JsonResource
             'note' => $rsvp->note,
             'waitlist_position' => $rsvp->isWaitlisted() ? $rsvp->waitlistPosition() : null,
             'held_until' => $rsvp->held_until?->setTimezone($timezone)->toIso8601String(),
-            'amount' => $rsvp->amount === null ? null : (new MoneyResource($rsvp->amount))->resolve($request),
+            'amount' => MoneyResource::from($rsvp->amount)?->resolve($request),
             'checked_in_at' => $rsvp->checked_in_at?->setTimezone($timezone)->toIso8601String(),
             'checked_in_guests' => $rsvp->checked_in_guests,
             'responded_at' => $rsvp->responded_at?->setTimezone($timezone)->toIso8601String(),

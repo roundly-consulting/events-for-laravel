@@ -11,6 +11,7 @@ use RoundlyConsulting\Events\Models\Venue;
 use RoundlyConsulting\Events\Tests\Fixtures\Models\Team;
 use RoundlyConsulting\Events\Tests\Fixtures\Models\User;
 use RoundlyConsulting\Events\Tests\Support\Scenarios;
+use RoundlyConsulting\Money\Money;
 
 beforeEach(function (): void {
     Scenarios::freeze();
@@ -176,4 +177,26 @@ it('lets team organizers create through the reference', function (): void {
     $this->actingAs(User::factory()->create())->postJson('/api/events', [
         'title' => 'Meetup', 'starts_at' => '2027-02-12 18:00', 'organizer' => ['type' => 'team', 'id' => $team->getKey()],
     ])->assertStatus(422)->assertJsonPath('code', 'invalid_organizer');
+});
+
+test('prices_render_through_money_resource', function (): void {
+    $event = Scenarios::event(capacity: 10, organizer: $this->organizer);
+    Events::for($event)->tiers()->add('Free entry', key: 'free');
+    Events::for($event)->tiers()->add('Supporter', price: Money::ofMajor('15', 'EUR'), key: 'supporter');
+    $attendee = User::factory()->create();
+
+    $tiers = collect($this->getJson("/api/events/{$event->uuid}/tiers")->assertOk()->json('data'))->keyBy('key');
+    $amount = $this->actingAs($attendee)->putJson("/api/events/{$event->uuid}/rsvp", ['response' => 'going', 'tier' => 'supporter'])
+        ->assertOk()->json('data.amount');
+
+    foreach ([$tiers['supporter']['price'], $amount] as $price) {
+        expect(array_keys($price))->toBe(['minor', 'decimal', 'currency', 'exponent', 'formatted'])
+            ->and($price['minor'])->toBe('1500')
+            ->and($price['decimal'])->toBe('15.00')
+            ->and($price['currency'])->toBe('EUR')
+            ->and($price['exponent'])->toBe(2)
+            ->and($price['formatted'])->toBeString()->toContain('15');
+    }
+
+    expect($tiers['free']['price'])->toBeNull();
 });
