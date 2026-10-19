@@ -41,7 +41,8 @@ final readonly class CheckInByCodeAction
     public function execute(#[SensitiveParameter] string $input, ?Event $event = null, ?Model $by = null, ?int $guests = null, bool $ignoreWindow = false): CheckInResult
     {
         $code = $this->codes->extract($input) ?? throw InvalidCheckInCodeException::unknown();
-        $rsvp = EventModels::rsvp()::query()->where('check_in_code_hash', $this->codes->hash($code))->first()
+        $hash = $this->codes->hash($code);
+        $rsvp = EventModels::rsvp()::query()->where('check_in_code_hash', $hash)->first()
             ?? throw InvalidCheckInCodeException::unknown();
         $owner = $rsvp->event;
 
@@ -63,7 +64,8 @@ final readonly class CheckInByCodeAction
             CheckInWriter::assertWindow($owner);
         }
 
-        $result = CheckInWriter::write($rsvp, $guests, CheckInMethod::Code, $by);
+        // The write needs the RSVP to still be going and to still hold this code.
+        $result = CheckInWriter::write($rsvp, $guests, CheckInMethod::Code, $by, $hash);
 
         if ($result->firstCheckIn) {
             $this->events->dispatch(new AttendeeCheckedIn($result));

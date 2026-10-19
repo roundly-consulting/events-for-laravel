@@ -269,3 +269,100 @@ test('unscoped_check_in_authorizes_on_the_codes_event', function (): void {
     expect(fn () => Events::checkIn((string) $foreign->checkInCode(), by: $gate))
         ->toThrow(InvalidCheckInCodeException::class, 'The check-in code is not valid.');
 });
+
+/**
+ * Run `$during` once, right after the first query whose SQL contains `$sql` has run — the gap
+ * between a read and the write that relies on it.
+ */
+function stageAfterQuery(string $sql, Closure $during): void
+{
+    $fired = false;
+
+    DB::listen(static function ($query) use (&$fired, $sql, $during): void {
+        if (! $fired && str_contains($query->sql, $sql)) {
+            $fired = true;
+            $during();
+        }
+    });
+}
+
+test('a_decline_landing_mid_scan_never_leaves_a_checked_in_absentee', function (): void {
+    EventBus::fake([AttendeeCheckedIn::class]);
+    $organizer = User::factory()->create();
+    $attendee = User::factory()->create();
+    $event = Scenarios::event(capacity: 1, organizer: $organizer);
+    $rsvp = Events::for($event)->rsvp($attendee)->going();
+    atTheDoor($event);
+
+    // The attendee leaves at the door between the code lookup and the check-in write.
+    stageAfterQuery('check_in_code_hash', static fn () => Events::for($event)->rsvp($attendee)->notGoing());
+
+    expect(fn () => Events::for($event)->by($organizer)->checkIn((string) $rsvp->checkInCode()))
+        ->toThrow(CheckInRefusedException::class, 'not going');
+
+    $row = $rsvp->fresh();
+    expect($row?->status)->toBe(RsvpStatus::NotGoing)
+        ->and($row?->checked_in_at)->toBeNull()
+        ->and($event->fresh()?->seats_taken)->toBe(0)
+        ->and($event->fresh()?->going_count)->toBe(0);
+    EventBus::assertNotDispatched(AttendeeCheckedIn::class);
+});
+
+test('a_code_rotated_mid_scan_stops_working', function (): void {
+    $organizer = User::factory()->create();
+    $event = Scenarios::event(organizer: $organizer);
+    $rsvp = Events::for($event)->rsvp(User::factory()->create())->going();
+    $old = (string) $rsvp->checkInCode();
+    atTheDoor($event);
+
+    // The screenshot leaked; the organizer rotates the code while the old one is being scanned.
+    stageAfterQuery('check_in_code_hash', static fn () => Events::rsvps()->rotateCode($rsvp->fresh() ?? $rsvp));
+
+    expect(fn () => Events::for($event)->by($organizer)->checkIn($old))->toThrow(InvalidCheckInCodeException::class)
+        ->and($rsvp->fresh()?->checked_in_at)->toBeNull();
+
+    // The new code works.
+    expect(Events::for($event)->by($organizer)->checkIn((string) $rsvp->fresh()?->checkInCode())->firstCheckIn)->toBeTrue();
+});
+
+test('a_manual_check_in_refuses_an_rsvp_that_left_mid_call', function (): void {
+    EventBus::fake([AttendeeCheckedIn::class]);
+    $organizer = User::factory()->create();
+    $attendee = User::factory()->create();
+    $event = Scenarios::event(organizer: $organizer);
+    $rsvp = Events::for($event)->rsvp($attendee)->going();
+    atTheDoor($event);
+
+    // One connection here, so the decline lands inside the check-in's transaction and the write's
+    // compare-and-swap refuses it. On two connections the RSVP row lock makes it wait (the racer).
+    stageAfterQuery('event_rsvps', static fn () => Events::for($event)->rsvp($attendee)->notGoing());
+
+    try {
+        Events::for($event)->by($organizer)->attendees()->checkIn($rsvp);
+        $outcome = 'checked in';
+    } catch (CheckInRefusedException|InvalidRsvpTransitionException) {
+        $outcome = 'refused';
+    }
+
+    $row = $rsvp->fresh();
+    expect($outcome)->toBe('refused')
+        ->and($row?->status !== RsvpStatus::Going && $row?->checked_in_at !== null)->toBeFalse()
+        ->and($row?->checked_in_at)->toBeNull();
+    EventBus::assertNotDispatched(AttendeeCheckedIn::class);
+});
+
+test('a check-in is undone only once', function (): void {
+    EventBus::fake([CheckInUndone::class]);
+    $organizer = User::factory()->create();
+    $event = Scenarios::event(organizer: $organizer);
+    $rsvp = Events::for($event)->rsvp(User::factory()->create())->going();
+    atTheDoor($event);
+    Events::for($event)->by($organizer)->attendees()->checkIn($rsvp);
+
+    Events::for($event)->by($organizer)->attendees()->undoCheckIn($rsvp)->undoCheckIn($rsvp);
+
+    expect($rsvp->fresh()?->checked_in_at)->toBeNull()
+        ->and($rsvp->fresh()?->checked_in_guests)->toBeNull()
+        ->and($rsvp->fresh()?->status)->toBe(RsvpStatus::Going);
+    EventBus::assertDispatchedTimes(CheckInUndone::class, 1);
+});
