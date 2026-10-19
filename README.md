@@ -28,8 +28,8 @@ php artisan migrate
 ```
 
 Set `EVENTS_KEY_TYPE` to your users' key type (`bigint`, `uuid` or `ulid`) before migrating, and keep
-`EVENTS_PRIMARY_KEY_TYPE` equal to `lifecycle.key_type` and `tags.key_type`. Schedule `events:sweep` and
-`lifecycle:sweep` every minute (held seats expire, events complete).
+`EVENTS_PRIMARY_KEY_TYPE` equal to `lifecycle.key_type` and `tags.key_type`. Schedule `lifecycle:sweep` every
+minute so finished events complete on their own.
 
 ## Usage
 
