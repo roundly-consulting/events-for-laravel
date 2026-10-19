@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace RoundlyConsulting\Events\Testing;
 
 use Closure;
-use Illuminate\Contracts\Container\Container;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use PHPUnit\Framework\Assert as PHPUnit;
@@ -34,11 +33,6 @@ final class EventsFake extends EventsManager
 {
     /** @var list<RecordedEventOperation> */
     private array $recorded = [];
-
-    public function __construct(Container $container)
-    {
-        parent::__construct($container);
-    }
 
     /**
      * @internal

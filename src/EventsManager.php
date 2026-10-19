@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace RoundlyConsulting\Events;
 
 use Closure;
+use Illuminate\Container\Container as CurrentContainer;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -50,13 +51,13 @@ use SensitiveParameter;
  *
  * Not final on purpose: EventsFake extends it, so an injected manager still type-checks under
  * `Events::fake()`.
+ *
+ * Octane-safe: a host may resolve the singleton at boot, so it holds no container — actions and
+ * read services come from the current one ({@see self::container()}), and a binding a request's
+ * sandbox makes applies.
  */
 class EventsManager
 {
-    public function __construct(
-        protected readonly Container $container,
-    ) {}
-
     /**
      * A fluent builder for a new event: `Events::make('Jazz Night')->organizedBy($user)->at($venue)
      * ->startsAt('2026-11-14 20:00')->publish()`.
@@ -164,7 +165,7 @@ class EventsManager
      */
     public function categories(): TypeTags
     {
-        return $this->container->make(TagsManager::class)->type(EventTagType::Category);
+        return $this->container()->make(TagsManager::class)->type(EventTagType::Category);
     }
 
     /**
@@ -173,7 +174,7 @@ class EventsManager
      */
     public function labels(): TypeTags
     {
-        return $this->container->make(TagsManager::class)->type(EventTagType::Label);
+        return $this->container()->make(TagsManager::class)->type(EventTagType::Label);
     }
 
     /**
@@ -182,7 +183,7 @@ class EventsManager
      */
     public function rsvps(): Rsvps
     {
-        return new Rsvps($this, $this->container->make(CheckInCodes::class), $this->container->make(CheckInQr::class));
+        return new Rsvps($this, $this->container()->make(CheckInCodes::class), $this->container()->make(CheckInQr::class));
     }
 
     /**
@@ -190,7 +191,7 @@ class EventsManager
      */
     public function invitations(): Invitations
     {
-        return new Invitations($this, $this->container->make(InvitationTokens::class));
+        return new Invitations($this, $this->container()->make(InvitationTokens::class));
     }
 
     /**
@@ -225,7 +226,7 @@ class EventsManager
             }
         }
 
-        return new IcsCalendar($this->container->make(IcsWriter::class)->write($visible, $viewer), 'events.ics');
+        return new IcsCalendar($this->container()->make(IcsWriter::class)->write($visible, $viewer), 'events.ics');
     }
 
     /**
@@ -233,7 +234,7 @@ class EventsManager
      */
     public function feeds(): Feeds
     {
-        return $this->container->make(Feeds::class);
+        return $this->container()->make(Feeds::class);
     }
 
     /**
@@ -244,7 +245,7 @@ class EventsManager
      */
     public function jsonLd(Event $event): ?array
     {
-        return $this->container->make(EventJsonLd::class)->for($event);
+        return $this->container()->make(EventJsonLd::class)->for($event);
     }
 
     /**
@@ -283,7 +284,18 @@ class EventsManager
      */
     public function forgetAttendee(Model $attendee): int
     {
-        return $this->container->make(ReleaseAttendeeRsvpsAction::class)->execute($attendee);
+        return $this->container()->make(ReleaseAttendeeRsvpsAction::class)->execute($attendee);
+    }
+
+    /**
+     * The container the manager resolves actions and read services from: always the current one,
+     * never the one it was built with.
+     *
+     * @internal
+     */
+    public function container(): Container
+    {
+        return CurrentContainer::getInstance();
     }
 
     /**
@@ -303,6 +315,6 @@ class EventsManager
      */
     public function perform(EventOperation $operation, string $action, Closure $execute, array $context = []): mixed
     {
-        return $execute($this->container->make($action));
+        return $execute($this->container()->make($action));
     }
 }
