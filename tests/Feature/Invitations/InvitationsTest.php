@@ -164,3 +164,43 @@ it('declines and revokes', function (): void {
     Events::for($event)->invitations()->revoke($going);
     expect($going->rsvpFor($event)?->status)->toBe(RsvpStatus::Going);
 });
+
+test('an_account_invitee_must_be_signed_in_as_themselves_to_answer', function (): void {
+    $event = privateEvent();
+    $invitee = User::factory()->create();
+    $token = (string) Events::for($event)->invitations()->send($invitee)->plainToken;
+
+    // Signed out, or signed in as someone else: the uniform refusal, before any write.
+    expect(fn () => Events::invitations()->accept($token))->toThrow(InvalidInvitationException::class)
+        ->and(fn () => Events::invitations()->decline($token))->toThrow(InvalidInvitationException::class)
+        ->and(fn () => Events::invitations()->accept($token, by: User::factory()->create()))->toThrow(InvalidInvitationException::class)
+        ->and(EventInvitation::query()->sole()->status)->toBe(InvitationStatus::Pending)
+        ->and($invitee->rsvpFor($event))->toBeNull();
+
+    // The invitee, signed in, answers with the same token.
+    expect(Events::invitations()->accept($token, by: $invitee)->status)->toBe(RsvpStatus::Going);
+
+    // Trusted PHP (an import, a seeder) answers with no user at all.
+    $imported = User::factory()->create();
+    $importedToken = (string) Events::for($event)->invitations()->send($imported)->plainToken;
+    $system = Events::invitations()->asSystem();
+
+    expect($system->accept($importedToken, RsvpResponse::Interested)->status)->toBe(RsvpStatus::Interested)
+        ->and($system)->not->toBe(Events::invitations());
+
+    $declines = User::factory()->create();
+    $declineToken = (string) Events::for($event)->invitations()->send($declines)->plainToken;
+    expect($system->decline($declineToken)->status)->toBe(InvitationStatus::Declined);
+});
+
+test('a_guest_model_invitee_answers_by_token_alone', function (): void {
+    $event = privateEvent();
+    $guest = Guest::factory()->create();
+    $token = (string) Events::for($event)->invitations()->send($guest)->plainToken;
+
+    $rsvp = Events::invitations()->accept($token);
+
+    expect($rsvp->status)->toBe(RsvpStatus::Going)
+        ->and($rsvp->attendee_type)->toBe($guest->getMorphClass())
+        ->and((string) $rsvp->attendee_id)->toBe((string) $guest->getKey());
+});

@@ -184,3 +184,29 @@ test('invitations_cannot_be_accepted_for_someone_else_over_the_api', function ()
         ->and(Events::for($this->event)->attendees()->find($this->attendee))->toBeNull()
         ->and(RsvpStatus::Going->value)->toBe('going');
 });
+
+test('a_signed_out_link_holder_cannot_answer_for_an_account_over_the_api', function (): void {
+    Events::for($this->event)->update(new UpdateEventData(visibility: Visibility::Private));
+    $invitee = User::factory()->create();
+    $token = Events::for($this->event)->invitations()->send($invitee)->plainToken;
+
+    guest();
+    $accept = $this->postJson('/api/event-invitations/accept', ['token' => $token]);
+    $decline = $this->postJson('/api/event-invitations/decline', ['token' => $token]);
+
+    $accept->assertNotFound()->assertJsonPath('code', 'invalid_invitation')->assertJsonMissingPath('data.check_in_code');
+    $decline->assertNotFound()->assertJsonPath('code', 'invalid_invitation');
+    expect(EventInvitation::query()->sole()->status->value)->toBe('pending')
+        ->and(Events::for($this->event)->attendees()->find($invitee))->toBeNull();
+
+    // The token still works for its invitee, signed in.
+    $this->actingAs($invitee)->postJson('/api/event-invitations/accept', ['token' => $token])->assertOk()->assertJsonPath('data.status', 'going');
+});
+
+test('a guest model invitee answers over the api signed out', function (): void {
+    Events::for($this->event)->update(new UpdateEventData(visibility: Visibility::Private));
+    $token = Events::for($this->event)->invitations()->send(Guest::factory()->create())->plainToken;
+
+    guest();
+    $this->postJson('/api/event-invitations/accept', ['token' => $token])->assertOk()->assertJsonPath('data.status', 'going');
+});

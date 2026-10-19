@@ -50,7 +50,7 @@ Route::prefix(EventsConfig::routesPrefix())
         Route::get('event-venues', [VenueController::class, 'index'])->name('venues.index');
         Route::get('event-venues/{venue}', [VenueController::class, 'show'])->whereNumber('venue')->name('venues.show');
 
-        // An invitation link: the token is the credential (and a signed-in user must be the invitee).
+        // An invitation link: the token is the credential; an account invitee must also be signed in as themselves.
         Route::middleware('throttle:events-rsvp')->group(static function (): void {
             Route::post('event-invitations/accept', [InvitationResponseController::class, 'accept'])->name('invitations.accept');
             Route::post('event-invitations/decline', [InvitationResponseController::class, 'decline'])->name('invitations.decline');

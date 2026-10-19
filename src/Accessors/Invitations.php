@@ -17,14 +17,27 @@ use SensitiveParameter;
 
 /**
  * `Events::invitations()` — answering an invitation from its link, by token. Pass the request's
- * user as `$by`: when the invitee is a user account, only that user may answer.
+ * user as `$by`: when the invitee is an account, only that user, signed in, may answer. A Guest
+ * model invitee answers with the token alone. Trusted PHP (imports, seeders, tests) answers for
+ * anyone through `asSystem()`.
+ *
+ * Immutable: `asSystem()` returns a new accessor.
  */
 final readonly class Invitations
 {
     public function __construct(
         private EventsManager $manager,
         private InvitationTokens $tokens,
+        private bool $system = false,
     ) {}
+
+    /**
+     * Answer as trusted code: no user needed, whoever the invitee is.
+     */
+    public function asSystem(): self
+    {
+        return new self($this->manager, $this->tokens, true);
+    }
 
     /**
      * Accept: RSVP the invitee (going by default, or interested).
@@ -34,8 +47,8 @@ final readonly class Invitations
         return $this->manager->perform(
             EventOperation::RespondToInvitation,
             RespondToInvitationAction::class,
-            static fn (RespondToInvitationAction $action): Rsvp => $action->execute($token, $as, $by),
-            ['response' => $as, 'actor' => $by],
+            fn (RespondToInvitationAction $action): Rsvp => $action->execute($token, $as, $by, $this->system),
+            ['response' => $as, 'actor' => $by, 'system' => $this->system],
         );
     }
 
@@ -46,8 +59,8 @@ final readonly class Invitations
         $this->manager->perform(
             EventOperation::RespondToInvitation,
             RespondToInvitationAction::class,
-            static fn (RespondToInvitationAction $action): Rsvp => $action->execute($token, RsvpResponse::NotGoing, $by),
-            ['event' => $invitation->event, 'response' => RsvpResponse::NotGoing, 'actor' => $by],
+            fn (RespondToInvitationAction $action): Rsvp => $action->execute($token, RsvpResponse::NotGoing, $by, $this->system),
+            ['event' => $invitation->event, 'response' => RsvpResponse::NotGoing, 'actor' => $by, 'system' => $this->system],
         );
 
         return $invitation->refresh();
