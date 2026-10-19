@@ -14,6 +14,7 @@ use RoundlyConsulting\Events\Events\AttendeeConfirmed;
 use RoundlyConsulting\Events\Events\RsvpCancelled;
 use RoundlyConsulting\Events\Events\RsvpHeld;
 use RoundlyConsulting\Events\Events\RsvpHoldExpired;
+use RoundlyConsulting\Events\Events\RsvpPaymentRequestDiscarded;
 use RoundlyConsulting\Events\Events\RsvpPaymentRequestFailed;
 use RoundlyConsulting\Events\Exceptions\InvalidRsvpTransitionException;
 use RoundlyConsulting\Events\Exceptions\RsvpClosedException;
@@ -26,6 +27,7 @@ use RoundlyConsulting\Events\Models\Rsvp;
 use RoundlyConsulting\Events\Notifications\WaitlistPromotedNotification;
 use RoundlyConsulting\Events\Tests\Fixtures\Models\User;
 use RoundlyConsulting\Events\Tests\Fixtures\Payments\FakePaymentCollector;
+use RoundlyConsulting\Events\Tests\Fixtures\Payments\SlowCollector;
 use RoundlyConsulting\Events\Tests\Support\Scenarios;
 use RoundlyConsulting\Money\Money;
 use RoundlyConsulting\PackageToolkit\Exceptions\InvalidConfigurationException;
@@ -414,4 +416,69 @@ test('each_promotion_is_told_once', function (): void {
     // A hold that is not a promotion (a party change) never tells "promoted".
     app()->call([new RequestAdmissionPaymentJob((int) $rsvp?->getKey()), 'handle']);
     Notification::assertSentToTimes($waiting, WaitlistPromotedNotification::class, 1);
+});
+
+test('a_checkout_for_a_hold_that_changed_meanwhile_is_discarded', function (): void {
+    SlowCollector::reset();
+    app()->bind(CollectsAdmissionPayment::class, SlowCollector::class);
+    EventBus::fake([RsvpHeld::class, RsvpPaymentRequestDiscarded::class]);
+    $event = paidEvent(capacity: 5);
+    $user = User::factory()->create();
+
+    // The attendee declines while the provider call is in flight.
+    SlowCollector::$during = static fn () => Events::for($event)->rsvp($user)->notGoing();
+    $rsvp = Events::for($event)->rsvp($user)->going(tier: 'supporter');
+
+    expect($rsvp->fresh()?->status)->toBe(RsvpStatus::NotGoing)
+        ->and($rsvp->fresh()?->payment_reference)->toBeNull();
+    EventBus::assertNotDispatched(RsvpHeld::class);
+    EventBus::assertDispatchedTimes(RsvpPaymentRequestDiscarded::class, 1);
+    EventBus::assertDispatched(RsvpPaymentRequestDiscarded::class, static fn (RsvpPaymentRequestDiscarded $discarded): bool => $discarded->paymentRequest->reference === 'cs_'.$rsvp->getKey()
+        && $discarded->rsvp->is($rsvp));
+
+    // Asked by hand: the hold is released mid-call, the checkout is reported and null returned.
+    $other = User::factory()->create();
+    SlowCollector::$returnsNull = true;
+    $held = Events::for($event)->rsvp($other)->going(tier: 'supporter');
+    SlowCollector::$returnsNull = false;
+    SlowCollector::$during = static fn () => Events::rsvps()->release($held->fresh() ?? $held);
+
+    expect(Events::rsvps()->requestPayment($held))->toBeNull()
+        ->and($held->fresh()?->payment_reference)->toBeNull();
+    EventBus::assertDispatchedTimes(RsvpPaymentRequestDiscarded::class, 2);
+});
+
+test('rsvp_held_is_only_fired_for_a_stored_checkout', function (): void {
+    SlowCollector::reset();
+    app()->bind(CollectsAdmissionPayment::class, SlowCollector::class);
+    EventBus::fake([RsvpHeld::class, RsvpPaymentRequestDiscarded::class]);
+    $event = paidEvent(capacity: 5);
+
+    $stored = Events::for($event)->rsvp(User::factory()->create())->going(tier: 'supporter');
+    EventBus::assertDispatched(RsvpHeld::class, static fn (RsvpHeld $held): bool => $held->paymentRequest?->reference === $stored->payment_reference);
+
+    // No checkout at all ("collect another way") is still announced, with no request.
+    SlowCollector::$returnsNull = true;
+    Events::for($event)->rsvp(User::factory()->create())->going(tier: 'supporter');
+    EventBus::assertDispatched(RsvpHeld::class, static fn (RsvpHeld $held): bool => $held->paymentRequest === null);
+    EventBus::assertDispatchedTimes(RsvpHeld::class, 2);
+    EventBus::assertNotDispatched(RsvpPaymentRequestDiscarded::class);
+});
+
+test('a_repeated_identical_reference_counts_as_stored', function (): void {
+    SlowCollector::reset();
+    app()->bind(CollectsAdmissionPayment::class, SlowCollector::class);
+    EventBus::fake([RsvpHeld::class, RsvpPaymentRequestDiscarded::class]);
+    $event = paidEvent(capacity: 5);
+    SlowCollector::$returnsNull = true;
+    $held = Events::for($event)->rsvp(User::factory()->create())->going(tier: 'supporter');
+    SlowCollector::$returnsNull = false;
+
+    // A second request for the same hold lands first and stores the provider's (same) checkout.
+    SlowCollector::$during = static fn () => Events::rsvps()->requestPayment($held->fresh() ?? $held);
+    $request = Events::rsvps()->requestPayment($held);
+
+    expect($request?->reference)->toBe('cs_'.$held->getKey())
+        ->and($held->fresh()?->payment_reference)->toBe('cs_'.$held->getKey());
+    EventBus::assertNotDispatched(RsvpPaymentRequestDiscarded::class);
 });

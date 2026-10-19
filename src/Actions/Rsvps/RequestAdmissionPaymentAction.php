@@ -9,6 +9,7 @@ use RoundlyConsulting\Events\Contracts\CollectsAdmissionPayment;
 use RoundlyConsulting\Events\DataTransferObjects\PaymentRequest;
 use RoundlyConsulting\Events\Enums\RsvpStatus;
 use RoundlyConsulting\Events\Events\RsvpHeld;
+use RoundlyConsulting\Events\Events\RsvpPaymentRequestDiscarded;
 use RoundlyConsulting\Events\Events\RsvpPaymentRequestFailed;
 use RoundlyConsulting\Events\Exceptions\InvalidRsvpTransitionException;
 use RoundlyConsulting\Events\Exceptions\RsvpNotFoundException;
@@ -24,6 +25,11 @@ use Throwable;
  * earlier expiry shortens the hold. Fires `RsvpHeld` with the request (or null: collect another
  * way). A failing collector fires `RsvpPaymentRequestFailed` and throws; the hold stays and
  * expires on its own.
+ *
+ * A checkout for a hold that changed during the collector call (released, declined, refreshed,
+ * or given another checkout meanwhile) is kept nowhere: nothing is announced, null is returned
+ * and `RsvpPaymentRequestDiscarded` reports it so the host can void it. The same reference
+ * stored meanwhile (an idempotent collector answering a repeated request) counts as stored.
  */
 final readonly class RequestAdmissionPaymentAction
 {
@@ -60,8 +66,14 @@ final readonly class RequestAdmissionPaymentAction
         }
 
         if ($request !== null) {
-            $this->store($rsvp, $request);
+            $stored = $this->store($rsvp, $request);
             $given->setRawAttributes($rsvp->getAttributes(), true);
+
+            if (! $stored) {
+                $this->events->dispatch(new RsvpPaymentRequestDiscarded($rsvp, $request));
+
+                return null;
+            }
         }
 
         $this->events->dispatch(new RsvpHeld($rsvp, $amount, $request));
@@ -69,17 +81,29 @@ final readonly class RequestAdmissionPaymentAction
         return $request;
     }
 
-    private function store(Rsvp $rsvp, PaymentRequest $request): void
+    /**
+     * @return bool whether the hold now carries this checkout
+     */
+    private function store(Rsvp $rsvp, PaymentRequest $request): bool
     {
         $event = $rsvp->event;
 
-        EventTransaction::run($event, static function () use ($event, $rsvp, $request): void {
+        return EventTransaction::run($event, static function () use ($event, $rsvp, $request): bool {
             LockedEvent::lock($event, allowTrashed: true);
             $current = EventModels::rsvp()::query()->whereKey($rsvp->getKey())->lockForUpdate()->first();
 
-            // The hold changed meanwhile (released, refreshed): this checkout belongs to nothing.
-            if ($current === null || $current->status !== RsvpStatus::Held || $current->payment_reference !== null) {
-                return;
+            if ($current !== null) {
+                $rsvp->setRawAttributes($current->getAttributes(), true);
+            }
+
+            // The hold changed meanwhile (released, refreshed, given another checkout): this
+            // checkout belongs to nothing.
+            if ($current === null || $current->status !== RsvpStatus::Held) {
+                return false;
+            }
+
+            if ($current->payment_reference !== null) {
+                return $current->payment_reference === $request->reference;
             }
 
             $current->payment_reference = $request->reference;
@@ -91,6 +115,8 @@ final readonly class RequestAdmissionPaymentAction
 
             $current->save();
             $rsvp->setRawAttributes($current->getAttributes(), true);
+
+            return true;
         });
     }
 }
