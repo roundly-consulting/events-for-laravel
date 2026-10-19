@@ -98,17 +98,37 @@ final readonly class Doctor
     {
         try {
             $manager = $this->container->make(EventsManager::class);
+            $category = $manager->categories()->definition();
 
-            if (! $manager->categories()->definition()->isSingle()) {
+            if (! $category->isSingle()) {
                 return [self::error('tag_types', 'events:category must allow one category per event (an override made it allow more).')];
             }
 
-            $manager->labels()->definition();
+            $label = $manager->labels()->definition();
         } catch (Throwable $exception) {
             return [self::error('tag_types', 'The events tag types are not defined: '.$exception->getMessage())];
         }
 
-        return [];
+        $findings = [];
+
+        if (! $category->curated || ! $category->globalOnly || ! $category->hierarchical) {
+            $findings[] = self::warning('tag_types', 'events:category is no longer a curated, global tree (a tags override): organizers may create or scope categories, and category browsing assumes one shared tree.');
+        }
+
+        if (! $label->private) {
+            $findings[] = self::warning('tag_types', 'events:label is not private (a tags override): labels typed on private events would surface in tags\' JSON API.');
+        }
+
+        foreach ([$category, $label] as $type) {
+            if ($type->hierarchical && ! $type->curated) {
+                $findings[] = self::warning('tag_types', sprintf(
+                    '%s is hierarchical and free-form (a tags override): tags then locks its tree before the event row while events locks the event row first, so concurrent writes can deadlock — events retries its own transactions, a host transaction must retry itself.',
+                    $type->name,
+                ));
+            }
+        }
+
+        return $findings;
     }
 
     /**

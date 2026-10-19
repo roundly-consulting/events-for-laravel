@@ -154,3 +154,35 @@ test('lifecycle_fake_is_documented_as_incompatible', function (): void {
         ->toContain('Event::fake([')
         ->toContain('never');
 })->skip(fn (): bool => ! is_file(__DIR__.'/../../../../docs/packages/events-for-laravel/technical/testing.md'), 'the workspace docs are not next to the package');
+
+test('doctor_warns_on_tag_type_overrides', function (array $override, array $warnings): void {
+    config()->set('events.urls.event', 'https://example.com/events/{uuid}');
+    config()->set('tags.overrides', $override);
+
+    // Warnings only: the exit code stays 0.
+    expect(Artisan::call('events:doctor', ['--json' => true]))->toBe(0);
+    $findings = json_decode(trim(Artisan::output()), true);
+
+    expect(array_map(static fn (array $finding): string => $finding['severity'].':'.$finding['check'], $findings))->toBe(array_fill(0, count($warnings), 'warning:tag_types'));
+
+    foreach ($warnings as $index => $warning) {
+        expect($findings[$index]['message'])->toContain($warning);
+    }
+})->with([
+    'category not global' => [['events:category' => ['global_only' => false]], ['events:category is no longer a curated, global tree']],
+    'category flat' => [['events:category' => ['hierarchical' => false]], ['events:category is no longer a curated, global tree']],
+    'category free-form' => [['events:category' => ['curated' => false, 'stable_slugs' => false]], [
+        'events:category is no longer a curated, global tree',
+        'events:category is hierarchical and free-form',
+    ]],
+    'label not private' => [['events:label' => ['private' => false]], ['events:label is not private']],
+    'label a free-form tree' => [['events:label' => ['hierarchical' => true]], ['events:label is hierarchical and free-form']],
+]);
+
+test('doctor still errors on a category that allows more than one', function (): void {
+    config()->set('events.urls.event', 'https://example.com/events/{uuid}');
+    config()->set('tags.overrides', ['events:category' => ['max' => 3]]);
+
+    expect(Artisan::call('events:doctor', ['--json' => true]))->toBe(1)
+        ->and(array_column(json_decode(trim(Artisan::output()), true), 'check'))->toBe(['tag_types']);
+});
