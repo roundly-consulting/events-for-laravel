@@ -84,6 +84,11 @@ final class InvalidEventException extends EventsException
         return self::make('invalid_event', 422, [], 'event_finished');
     }
 
+    public static function invalidSortDirection(string $direction): self
+    {
+        return self::make('invalid_event', 422, ['direction' => $direction], 'event_invalid_sort_direction');
+    }
+
     public static function messageTooLong(int $max): self
     {
         return self::make('invalid_event', 422, ['max' => $max], 'invitation_message_too_long');

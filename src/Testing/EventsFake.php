@@ -19,6 +19,7 @@ use RoundlyConsulting\Events\Models\Event;
 use RoundlyConsulting\Events\Models\Rsvp;
 use RoundlyConsulting\Events\Models\Venue;
 use RoundlyConsulting\Events\Support\NotGiven;
+use RoundlyConsulting\Tags\Models\Tag;
 
 /**
  * A recording, still-performing manager, installed by `Events::fake()`. Every operation runs for
@@ -183,6 +184,55 @@ final class EventsFake extends EventsManager
         $this->assertNotRecorded(EventOperation::Complete);
     }
 
+    // Category & labels ------------------------------------------------------------------------
+
+    /**
+     * A categorization of `$event` (null = any), to `$category` when given (the value passed, or
+     * a tag whose slug or key equals it).
+     */
+    public function assertCategorized(?Event $event = null, Tag|int|string|null $category = null): void
+    {
+        $this->assertRecorded(EventOperation::Categorize, static fn (RecordedEventOperation $recorded): bool => $recorded->concerns($event)
+            && ($category === null || self::sameTag($recorded->context['category'] ?? null, $category)));
+    }
+
+    public function assertNothingCategorized(): void
+    {
+        $this->assertNotRecorded(EventOperation::Categorize);
+    }
+
+    /**
+     * Labels attached to or synced on `$event` (null = any), including every one of `$labels`
+     * when given (names, slugs, keys or tags, as passed).
+     *
+     * @param  list<Tag|int|string>|null  $labels
+     */
+    public function assertLabelled(?Event $event = null, ?array $labels = null): void
+    {
+        $this->assertRecordedAny([EventOperation::AttachLabels, EventOperation::SyncLabels], static function (RecordedEventOperation $recorded) use ($event, $labels): bool {
+            if (! $recorded->concerns($event)) {
+                return false;
+            }
+
+            $given = $recorded->context['labels'] ?? [];
+            $given = is_iterable($given) ? [...$given] : [$given];
+
+            foreach ($labels ?? [] as $label) {
+                if (array_filter($given, static fn (mixed $passed): bool => self::sameTag($passed, $label)) === []) {
+                    return false;
+                }
+            }
+
+            return true;
+        });
+    }
+
+    public function assertNothingLabelled(): void
+    {
+        $this->assertNotRecorded(EventOperation::AttachLabels);
+        $this->assertNotRecorded(EventOperation::SyncLabels);
+    }
+
     // Venues ---------------------------------------------------------------------------------
 
     /**
@@ -318,6 +368,15 @@ final class EventsFake extends EventsManager
     }
 
     // Plumbing -------------------------------------------------------------------------------
+
+    private static function sameTag(mixed $passed, Tag|int|string $expected): bool
+    {
+        $values = static fn (mixed $tag): array => $tag instanceof Tag
+            ? array_map('strval', [$tag->getKey(), $tag->slug])
+            : (is_int($tag) || is_string($tag) ? [mb_strtolower((string) $tag)] : []);
+
+        return array_intersect(array_map('mb_strtolower', $values($passed)), array_map('mb_strtolower', $values($expected))) !== [];
+    }
 
     /**
      * @param  Closure(RecordedEventOperation): bool  $matches

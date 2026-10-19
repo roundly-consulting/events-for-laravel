@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Model;
 use LogicException;
 use RoundlyConsulting\Events\Enums\AttendanceMode;
 use RoundlyConsulting\Events\Enums\EventPhase;
+use RoundlyConsulting\Events\Enums\EventTagType;
 use RoundlyConsulting\Events\Enums\GuestList;
 use RoundlyConsulting\Events\Enums\Visibility;
 use RoundlyConsulting\Events\Models\Event;
@@ -168,6 +169,29 @@ final class EventFactory extends Factory
                 $stamp ?? '' => $stamp === null ? null : Clock::now(),
                 'published_at' => $phase === EventPhase::Draft ? null : Clock::now(),
             ], static fn (mixed $value, string|int $key): bool => $key !== '' && $value !== null, ARRAY_FILTER_USE_BOTH);
+        });
+    }
+
+    /**
+     * In this category (a live category's slug or name). Tagged after creating, through the
+     * tags trait verbs — the raw `tags()` relation refuses writes.
+     */
+    public function categorized(string $category): self
+    {
+        return $this->afterCreating(static function (Event $event) use ($category): void {
+            $event->syncTags($category, EventTagType::Category);
+        });
+    }
+
+    /**
+     * With these labels (created when new), tagged after creating.
+     *
+     * @param  list<string>  $labels
+     */
+    public function labelled(array $labels): self
+    {
+        return $this->afterCreating(static function (Event $event) use ($labels): void {
+            $event->attachTags($labels, EventTagType::Label);
         });
     }
 

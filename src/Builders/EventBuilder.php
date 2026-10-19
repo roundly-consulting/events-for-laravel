@@ -25,6 +25,7 @@ use RoundlyConsulting\Events\Support\EventInput;
 use RoundlyConsulting\Events\Support\EventModels;
 use RoundlyConsulting\Events\Support\Timezones;
 use RoundlyConsulting\Money\Money;
+use RoundlyConsulting\Tags\Models\Tag;
 use SensitiveParameter;
 
 /**
@@ -96,6 +97,11 @@ final class EventBuilder
     private UploadedFile|string|null $poster = null;
 
     private ?string $posterDraft = null;
+
+    private Tag|int|string|null $category = null;
+
+    /** @var list<mixed> */
+    private array $labels = [];
 
     /** @var array<string, mixed> */
     private array $meta = [];
@@ -328,6 +334,28 @@ final class EventBuilder
     }
 
     /**
+     * The event's category: a slug or name of a curated category, a tag key or a tag.
+     */
+    public function category(Tag|int|string|null $category): self
+    {
+        $this->category = $category;
+
+        return $this;
+    }
+
+    /**
+     * Free-form labels (names are created when new; at most ten).
+     *
+     * @param  iterable<mixed>  $labels
+     */
+    public function labels(iterable $labels): self
+    {
+        $this->labels = array_values(is_array($labels) ? $labels : iterator_to_array($labels, false));
+
+        return $this;
+    }
+
+    /**
      * A ticket type: free without a price; its key derives from the name unless given.
      *
      * @param  array<string, string>|string  $name
@@ -404,6 +432,8 @@ final class EventBuilder
             tiers: $this->tiers,
             poster: $this->poster,
             posterDraft: $this->posterDraft,
+            category: $this->category,
+            labels: $this->labels,
             meta: $this->meta,
             actor: $this->actor,
         );

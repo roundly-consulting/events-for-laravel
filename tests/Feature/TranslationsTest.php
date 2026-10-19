@@ -8,7 +8,7 @@ use Illuminate\Support\Arr;
  * English and Slovak ship the same keys and placeholders in every file, and the Slovak lines
  * resolve through the package namespace.
  */
-$files = ['messages', 'enums'];
+$files = ['messages', 'enums', 'tags'];
 
 /**
  * @return array<string, string>
@@ -45,11 +45,13 @@ it('ships the same placeholders per key in english and slovak', function (string
     }
 })->with($files);
 
-it('ships every language file in both locales', function (): void {
+it('ships every language file in both locales', function () use ($files): void {
     $names = static fn (string $locale): array => array_map(basename(...), glob(__DIR__.'/../../resources/lang/'.$locale.'/*.php') ?: []);
+    $expected = $files;
+    sort($expected);
 
     expect($names('sk'))->toBe($names('en'))
-        ->and($names('en'))->toBe(array_map(static fn (string $file): string => $file.'.php', ['enums', 'messages']));
+        ->and($names('en'))->toBe(array_map(static fn (string $file): string => $file.'.php', $expected));
 });
 
 it('resolves slovak through the package namespace', function (): void {

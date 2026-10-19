@@ -17,6 +17,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Str;
 use RoundlyConsulting\Events\Casts\UtcDateTime;
 use RoundlyConsulting\Events\Concerns\HasConfigurableKey;
@@ -24,10 +25,13 @@ use RoundlyConsulting\Events\Concerns\StoresUtcTimestamps;
 use RoundlyConsulting\Events\Database\Factories\EventFactory;
 use RoundlyConsulting\Events\Enums\AttendanceMode;
 use RoundlyConsulting\Events\Enums\EventPhase;
+use RoundlyConsulting\Events\Enums\EventTagType;
 use RoundlyConsulting\Events\Enums\GuestList;
 use RoundlyConsulting\Events\Enums\RsvpStatus;
 use RoundlyConsulting\Events\Enums\Visibility;
+use RoundlyConsulting\Events\Exceptions\InvalidEventException;
 use RoundlyConsulting\Events\Support\Clock;
+use RoundlyConsulting\Events\Support\DistanceExpression;
 use RoundlyConsulting\Events\Support\EventManagers;
 use RoundlyConsulting\Events\Support\EventModels;
 use RoundlyConsulting\Events\Support\EventsConfig;
@@ -36,6 +40,7 @@ use RoundlyConsulting\Events\Support\EventStates;
 use RoundlyConsulting\Events\Support\EventVisibility;
 use RoundlyConsulting\Events\Support\Posters;
 use RoundlyConsulting\Events\Support\WallClock;
+use RoundlyConsulting\Geolocation\DataTransferObjects\Coordinates;
 use RoundlyConsulting\Lifecycle\Casts\AsLifecycleState;
 use RoundlyConsulting\Lifecycle\Concerns\HasLifecycle;
 use RoundlyConsulting\Lifecycle\Contracts\LifecycleSubject;
@@ -44,9 +49,13 @@ use RoundlyConsulting\MediaLibrary\Concerns\InteractsWithMedia;
 use RoundlyConsulting\MediaLibrary\Contracts\HasMedia;
 use RoundlyConsulting\MediaLibrary\Models\Media;
 use RoundlyConsulting\MediaLibrary\Variants\VariantRegistrar;
+use RoundlyConsulting\PackageToolkit\Support\RawExpression;
 use RoundlyConsulting\Sluggable\Concerns\HasSlug;
 use RoundlyConsulting\Sluggable\Contracts\Sluggable;
 use RoundlyConsulting\Sluggable\Definitions\SlugOptions;
+use RoundlyConsulting\Tags\Concerns\HasTags;
+use RoundlyConsulting\Tags\Contracts\Taggable;
+use RoundlyConsulting\Tags\Models\Tag;
 use RoundlyConsulting\Translatable\Concerns\HasTranslations;
 use RoundlyConsulting\Translatable\Contracts\Translatable;
 use RoundlyConsulting\Translatable\DataTransferObjects\TranslationSearch;
@@ -107,6 +116,9 @@ use RoundlyConsulting\Translatable\Facades\Translatable as Translations;
  * @property CarbonImmutable|null $updated_at
  * @property CarbonImmutable|null $deleted_at
  * @property-read EventPhase $phase
+ * @property-read Tag|null $category the event's category (in memory when `tags` is loaded)
+ * @property-read Collection<int, Tag> $labels the event's labels (in memory when `tags` is loaded)
+ * @property-read float|null $distance_km set by `withDistance()`; null for an event without a venue
  * @property-read Media|null $poster
  * @property-read Venue|null $venue
  * @property-read Model|null $organizer the organizer (null once its row is gone)
@@ -115,7 +127,7 @@ use RoundlyConsulting\Translatable\Facades\Translatable as Translations;
  * @property-read Collection<int, EventHost> $hosts
  * @property-read Collection<int, EventInvitation> $invitations
  */
-class Event extends Model implements HasMedia, LifecycleSubject, Sluggable, Translatable
+class Event extends Model implements HasMedia, LifecycleSubject, Sluggable, Taggable, Translatable
 {
     // Both define resolveRouteBindingQuery(); this class overrides it for the uuid route key.
     use HasConfigurableKey, HasSlug {
@@ -127,6 +139,7 @@ class Event extends Model implements HasMedia, LifecycleSubject, Sluggable, Tran
     use HasFactory;
 
     use HasLifecycle;
+    use HasTags;
     use HasTranslations;
     use InteractsWithMedia;
     use SoftDeletes;
@@ -289,6 +302,41 @@ class Event extends Model implements HasMedia, LifecycleSubject, Sluggable, Tran
     protected function phase(): Attribute
     {
         return Attribute::get(fn (): EventPhase => EventStates::phaseOf($this));
+    }
+
+    /**
+     * The event's category, or null (`events:category`, one per event).
+     *
+     * @return Attribute<Tag|null, never>
+     */
+    protected function category(): Attribute
+    {
+        return Attribute::get(fn (): ?Tag => $this->tagOf(EventTagType::Category));
+    }
+
+    /**
+     * The event's free-form labels (`events:label`).
+     *
+     * @return Attribute<Collection<int, Tag>, never>
+     */
+    protected function labels(): Attribute
+    {
+        return Attribute::get(fn (): Collection => $this->tagsOf(EventTagType::Label));
+    }
+
+    /**
+     * Whose label catalogue the event's labels live in: the global one, or the organizer's own
+     * with `events.tags.scope = organizer`. Categories are global whatever this says.
+     */
+    public function tagScope(): ?Model
+    {
+        if (! EventsConfig::tagsScopedByOrganizer()) {
+            return null;
+        }
+
+        $organizer = $this->organizer;
+
+        return $organizer instanceof Model ? $organizer : null;
     }
 
     public function startsAtLocal(): CarbonImmutable
@@ -647,6 +695,117 @@ class Event extends Model implements HasMedia, LifecycleSubject, Sluggable, Tran
 
         $query->where($query->qualifyColumn('starts_on'), '<=', $day)
             ->where($query->qualifyColumn('ends_on'), '>=', $day);
+    }
+
+    // Category & labels ------------------------------------------------------------------------
+
+    /**
+     * In any of these categories (slugs, names, keys or tags) — their sub-categories included
+     * unless `descendants: false`.
+     *
+     * @param  Builder<static>  $query
+     */
+    public function scopeInCategory(Builder $query, mixed $categories, bool $descendants = true): void
+    {
+        $query->withAnyTags($categories, EventTagType::Category, $descendants);
+    }
+
+    /**
+     * Carrying any of these labels — or every one with `all: true`.
+     *
+     * @param  Builder<static>  $query
+     */
+    public function scopeLabelled(Builder $query, mixed $labels, bool $all = false): void
+    {
+        $all
+            ? $query->withAllTags($labels, EventTagType::Label)
+            : $query->withAnyTags($labels, EventTagType::Label);
+    }
+
+    /**
+     * Without a category.
+     *
+     * @param  Builder<static>  $query
+     */
+    public function scopeUncategorized(Builder $query): void
+    {
+        $query->withoutTags([], EventTagType::Category);
+    }
+
+    // Near me ----------------------------------------------------------------------------------
+
+    /**
+     * At a venue within `$km` of the point (a bounding box on the venue's indexed coordinates,
+     * then the exact great-circle distance). Online-only events never match. `$km` must be in
+     * (0, `events.geo.max_radius_km`].
+     *
+     * @param  Builder<static>  $query
+     */
+    public function scopeNear(Builder $query, Coordinates $point, ?float $km = null): void
+    {
+        $km ??= EventsConfig::defaultRadiusKm();
+
+        $query->whereHas('venue', static function (Builder $venues) use ($point, $km): void {
+            $venues->near($point, $km);
+        });
+    }
+
+    /**
+     * Adds `distance_km` (float, null for an event without a venue) to the selected columns,
+     * keeping the existing select (`events.*` when there is none).
+     *
+     * @param  Builder<static>  $query
+     */
+    public function scopeWithDistance(Builder $query, Coordinates $point): void
+    {
+        if ($query->getQuery()->columns === null) {
+            $query->select($query->qualifyColumn('*'));
+        }
+
+        $query->selectSub($this->distanceSubquery($query, $point), 'distance_km');
+    }
+
+    /**
+     * Nearest first (or `desc`), events without a venue last in either direction.
+     *
+     * @param  Builder<static>  $query
+     */
+    public function scopeOrderByDistance(Builder $query, Coordinates $point, string $direction = 'asc'): void
+    {
+        $direction = strtolower($direction);
+
+        if (! in_array($direction, ['asc', 'desc'], true)) {
+            throw InvalidEventException::invalidSortDirection($direction);
+        }
+
+        $distance = $this->distanceSubquery($query, $point);
+        $sql = '('.$distance->toSql().')';
+
+        // orderByRaw() by hand: NULLS LAST portably (MySQL has no NULLS LAST), bindings in the
+        // order bucket so a paginator's count query drops them with the sort.
+        $base = $query->getQuery();
+        $base->orders[] = ['type' => 'Raw', 'sql' => "CASE WHEN {$sql} IS NULL THEN 1 ELSE 0 END, {$sql} {$direction}"];
+        $base->addBinding([...$distance->getBindings(), ...$distance->getBindings()], 'order');
+    }
+
+    /**
+     * `(select <distance> from venues where venues.id = events.venue_id)` — trashed venues
+     * included, like the `venue` relation.
+     *
+     * @param  Builder<static>  $query
+     */
+    private function distanceSubquery(Builder $query, Coordinates $point): QueryBuilder
+    {
+        $venue = EventModels::venue();
+        $table = (new $venue)->getTable();
+        $alias = 'ev_distance_venue';
+        $distance = DistanceExpression::for($this->getConnection(), $alias.'.latitude', $alias.'.longitude', $point);
+
+        return $this->getConnection()->table($table.' as '.$alias)
+            ->select(new RawExpression($distance->sql))
+            ->addBinding($distance->bindings, 'select')
+            ->whereColumn($alias.'.id', $query->qualifyColumn('venue_id'))
+            ->limit(1);
     }
 
     /**

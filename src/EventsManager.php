@@ -23,6 +23,7 @@ use RoundlyConsulting\Events\DataTransferObjects\CreateEventData;
 use RoundlyConsulting\Events\DataTransferObjects\SweepOptions;
 use RoundlyConsulting\Events\DataTransferObjects\SweepResult;
 use RoundlyConsulting\Events\Enums\EventOperation;
+use RoundlyConsulting\Events\Enums\EventTagType;
 use RoundlyConsulting\Events\Exceptions\EventNotFoundException;
 use RoundlyConsulting\Events\Handles\EventHandle;
 use RoundlyConsulting\Events\Models\Event;
@@ -30,6 +31,8 @@ use RoundlyConsulting\Events\Support\CheckInQr;
 use RoundlyConsulting\Events\Support\EventModels;
 use RoundlyConsulting\Events\Support\EventVisibility;
 use RoundlyConsulting\Events\Support\InvitationTokens;
+use RoundlyConsulting\Tags\Handles\TypeTags;
+use RoundlyConsulting\Tags\TagsManager;
 use SensitiveParameter;
 
 /**
@@ -125,7 +128,7 @@ class EventsManager
             ->visibleTo($viewer)
             ->listed()
             ->published()
-            ->with(['venue', 'organizer', 'tiers', 'media']);
+            ->with(['venue', 'organizer', 'tiers', 'media', 'tags']);
     }
 
     /**
@@ -145,6 +148,25 @@ class EventsManager
     public function venues(): Venues
     {
         return new Venues($this);
+    }
+
+    /**
+     * The category tree (tags-for-laravel's handle for `events:category`): seed it with
+     * `make('Jazz')->under($music)->findOrCreate()`, read it with `tree()` / `roots()`. Catalogue
+     * writes are tags' own operations (recorded by `Tags::fake()`).
+     */
+    public function categories(): TypeTags
+    {
+        return $this->container->make(TagsManager::class)->type(EventTagType::Category);
+    }
+
+    /**
+     * The label catalogue (tags' handle for `events:label`): global labels; an organizer's own with
+     * `->within($organizer)` when `events.tags.scope = organizer`.
+     */
+    public function labels(): TypeTags
+    {
+        return $this->container->make(TagsManager::class)->type(EventTagType::Label);
     }
 
     /**

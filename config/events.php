@@ -145,6 +145,23 @@ return [
 
     'geo' => [
         'max_radius_km' => 500,
+        'default_radius_km' => 25,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Category & labels (tags-for-laravel)
+    |--------------------------------------------------------------------------
+    |
+    | Events declares two tag types: `events:category` (one curated, global category tree) and
+    | `events:label` (free-form, at most ten per event, kept out of tags' JSON API). Labels are
+    | global by default; `organizer` gives every organizer their own label catalogue (then
+    | `events.primary_key_type`, `events.key_type` and `tags.key_type` must be equal).
+    |
+    */
+
+    'tags' => [
+        'scope' => null,
     ],
 
     /*

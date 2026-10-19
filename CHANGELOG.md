@@ -25,5 +25,7 @@ Initial public release.
 - Managers' list tools (`attendees()`: add, remove, change ticket type or guests, confirm, release) and waitlist tools (`waitlist()`: list, promote, position), and `counts()`.
 - Check-in at the door: unguessable 160-bit codes (encrypted, hash-indexed), a QR code that is never cached (`$rsvp->checkInQr()`), scoped and unscoped scans that are idempotent and refuse other events' codes, a check-in window, manual check-in and undo, and code rotation.
 - Co-hosts (`hosts()`), organizer transfer, `Concerns\OrganizesEvents` and invite-only events: `invitations()->send()` mints a bearer token stored as a hash only, `Events::invitations()->accept()` / `decline()` answer from the link.
+- Categories and labels through tags-for-laravel: one curated, global category tree (`Events::categories()`, `->category()` / `->categorize()`, `inCategory()` with sub-categories) and free-form labels kept out of tags' JSON API (`->labels()`, `labelled()`), optionally per organizer.
+- Near me: `near($point, km: 25)`, `withDistance()` and `orderByDistance()` (events without a venue last), the same great-circle distance in SQL and PHP on MySQL and PostgreSQL.
 - A recording, still-performing `Events::fake()` with paired assertions, and Pest expectations (`toBeGoingTo`, `toBeWaitlistedFor`, `toBeCheckedInTo`).
 - English and Slovak translations.

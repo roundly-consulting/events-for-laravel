@@ -22,6 +22,7 @@ use RoundlyConsulting\Events\Actions\Events\TransferOrganizerAction;
 use RoundlyConsulting\Events\Actions\Events\TransitionEventAction;
 use RoundlyConsulting\Events\Actions\Events\UnpublishEventAction;
 use RoundlyConsulting\Events\Actions\Events\UpdateEventAction;
+use RoundlyConsulting\Events\Actions\Tags\CategorizeEventAction;
 use RoundlyConsulting\Events\Builders\EventEditor;
 use RoundlyConsulting\Events\Builders\PendingRsvp;
 use RoundlyConsulting\Events\Contracts\EventState;
@@ -40,6 +41,8 @@ use RoundlyConsulting\Lifecycle\DataTransferObjects\AvailableTransition;
 use RoundlyConsulting\Lifecycle\DataTransferObjects\TransitionResult;
 use RoundlyConsulting\Lifecycle\LifecycleHandle;
 use RoundlyConsulting\Lifecycle\LifecycleManager;
+use RoundlyConsulting\Tags\DataTransferObjects\TagChanges;
+use RoundlyConsulting\Tags\Models\Tag;
 use SensitiveParameter;
 
 /**
@@ -128,6 +131,31 @@ final readonly class EventHandle
         );
 
         return $this;
+    }
+
+    /**
+     * Set the event's one category — a slug or name of a curated category, a tag key or a tag —
+     * or clear it with null. Unknown categories throw tags' `TagNotFoundException`.
+     */
+    public function categorize(Tag|int|string|null $category): static
+    {
+        $this->authorize('update');
+        $this->manager->perform(
+            EventOperation::Categorize,
+            CategorizeEventAction::class,
+            fn (CategorizeEventAction $action): TagChanges => $action->execute($this->event, $category, $this->actor, $this->silent),
+            $this->context(['category' => $category]),
+        );
+
+        return $this;
+    }
+
+    /**
+     * The event's free-form labels: `attach`, `detach`, `sync`, `all`.
+     */
+    public function labels(): EventLabels
+    {
+        return new EventLabels($this);
     }
 
     /**

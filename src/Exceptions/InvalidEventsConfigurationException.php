@@ -38,6 +38,11 @@ final class InvalidEventsConfigurationException extends PackageToolkitException
         return new self(sprintf('Configuration value [%s] must be an http(s) URL template.', $key));
     }
 
+    public static function invalidChoice(string $key, mixed $value, string $choices): self
+    {
+        return new self(sprintf('Configuration value [%s] must be one of [%s], [%s] given.', $key, $choices, self::describe($value)));
+    }
+
     /**
      * A model whose key cannot be stored in the configured morph columns: caught before SQL, so
      * PostgreSQL never answers with a raw "invalid input syntax for type bigint".

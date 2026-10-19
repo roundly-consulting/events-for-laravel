@@ -171,6 +171,33 @@ final class EventsConfig
         return Config::float('events.geo.max_radius_km', 500.0, min: 0.001, max: 20_038.0);
     }
 
+    /**
+     * The radius near-me searches use when none is given (`events.geo.default_radius_km`).
+     */
+    public static function defaultRadiusKm(): float
+    {
+        return Config::float('events.geo.default_radius_km', 25.0, min: 0.001, max: self::maxRadiusKm());
+    }
+
+    /**
+     * Whose label catalogue an event's labels live in (`events.tags.scope`): null (one global
+     * catalogue) or `organizer`.
+     */
+    public static function tagsScopedByOrganizer(): bool
+    {
+        $value = config('events.tags.scope');
+
+        if ($value === null || (is_string($value) && trim($value) === '')) {
+            return false;
+        }
+
+        if ($value === 'organizer') {
+            return true;
+        }
+
+        throw InvalidEventsConfigurationException::invalidChoice('events.tags.scope', $value, 'null, organizer');
+    }
+
     public static function posterBucket(): string
     {
         return Config::string('events.poster.bucket', 'poster');

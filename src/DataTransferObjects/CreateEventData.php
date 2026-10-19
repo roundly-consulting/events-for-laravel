@@ -11,6 +11,7 @@ use RoundlyConsulting\Events\Enums\AttendanceMode;
 use RoundlyConsulting\Events\Enums\GuestList;
 use RoundlyConsulting\Events\Enums\Visibility;
 use RoundlyConsulting\Events\Models\Venue;
+use RoundlyConsulting\Tags\Models\Tag;
 
 /**
  * A new event — what `Events::make()` builds and `Events::create()` takes. Every null setting
@@ -25,6 +26,8 @@ final readonly class CreateEventData
      * @param  list<string>|null  $reminders  ISO-8601 offsets before the start (null = config)
      * @param  list<Model>  $coHosts
      * @param  list<TierData>  $tiers
+     * @param  Tag|int|string|null  $category  a curated category's slug or name, a tag key or a tag
+     * @param  list<mixed>  $labels  label names (created when new), slugs, keys or tags
      * @param  array<string, mixed>  $meta
      */
     public function __construct(
@@ -50,6 +53,8 @@ final readonly class CreateEventData
         public array $tiers = [],
         public UploadedFile|string|null $poster = null,
         public ?string $posterDraft = null,
+        public Tag|int|string|null $category = null,
+        public array $labels = [],
         public array $meta = [],
         public ?Model $actor = null,
     ) {}

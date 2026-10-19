@@ -25,6 +25,12 @@ enum EventOperation: string
     case TransferOrganizer = 'transfer_organizer';
     case SetPoster = 'set_poster';
 
+    // Category & labels
+    case Categorize = 'categorize';
+    case AttachLabels = 'attach_labels';
+    case DetachLabels = 'detach_labels';
+    case SyncLabels = 'sync_labels';
+
     // Venues
     case CreateVenue = 'create_venue';
     case UpdateVenue = 'update_venue';

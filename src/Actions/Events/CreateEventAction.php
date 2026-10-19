@@ -9,6 +9,7 @@ use RoundlyConsulting\Events\Actions\Internal\ResolveScheduleAction;
 use RoundlyConsulting\Events\Actions\Internal\WriteCoHostAction;
 use RoundlyConsulting\Events\Actions\Tiers\CreateTierAction;
 use RoundlyConsulting\Events\DataTransferObjects\CreateEventData;
+use RoundlyConsulting\Events\Enums\EventTagType;
 use RoundlyConsulting\Events\Events\EventCreated;
 use RoundlyConsulting\Events\Exceptions\InvalidEventException;
 use RoundlyConsulting\Events\Exceptions\InvalidEventScheduleException;
@@ -24,12 +25,13 @@ use RoundlyConsulting\Events\Support\EventsConfig;
 use RoundlyConsulting\Events\Support\EventTransaction;
 use RoundlyConsulting\Events\Support\WallClock;
 use RoundlyConsulting\Sluggable\Exceptions\SlugAlreadyTakenException;
+use RoundlyConsulting\Tags\TagsManager;
 
 /**
  * Creates an event as a draft: validates the content, resolves the schedule in the event's
  * timezone (explicit, else the venue's, else `events.defaults.timezone`, else the app's), derives
  * the attendance mode, and writes the event with its co-hosts, ticket types and poster in one
- * transaction.
+ * transaction, with its category and labels.
  *
  * With an actor, the policy's `create` ability is checked, and organizing as anyone but the actor
  * needs the organizer's approval (`Organizer::allowsEventManagementBy($actor)`).
@@ -41,6 +43,7 @@ final readonly class CreateEventAction
         private WriteCoHostAction $coHosts,
         private CreateTierAction $tiers,
         private SetPosterAction $posters,
+        private TagsManager $tags,
         private Dispatcher $events,
     ) {}
 
@@ -127,6 +130,15 @@ final readonly class CreateEventAction
 
             if ($data->poster !== null || $data->posterDraft !== null) {
                 $this->posters->execute($event, $data->poster, $data->posterDraft, $actor);
+            }
+
+            // The new row is this transaction's own, so tags' taggable lock comes after it.
+            if ($data->category !== null) {
+                $this->tags->sync($event, $data->category, EventTagType::Category);
+            }
+
+            if ($data->labels !== []) {
+                $this->tags->attach($event, $data->labels, EventTagType::Label);
             }
 
             $this->events->dispatch(new EventCreated($event, $actor));
