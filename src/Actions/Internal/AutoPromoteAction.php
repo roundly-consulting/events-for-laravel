@@ -77,7 +77,8 @@ final readonly class AutoPromoteAction
             $this->seats->execute($book, $candidate, $to, $candidate->guests, $tierId, promotion: true);
 
             if ($to === RsvpStatus::Held) {
-                $this->bus->dispatch((new RequestAdmissionPaymentJob((int) $candidate->getKey()))->afterCommit());
+                // The job requests the checkout, then tells the attendee with its link.
+                $this->bus->dispatch((new RequestAdmissionPaymentJob((int) $candidate->getKey(), promotion: true))->afterCommit());
             }
 
             $promoted[] = $candidate;

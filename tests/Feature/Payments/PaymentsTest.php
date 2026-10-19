@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event as EventBus;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Route;
 use RoundlyConsulting\Events\Contracts\CollectsAdmissionPayment;
 use RoundlyConsulting\Events\DataTransferObjects\UpdateEventData;
@@ -14,7 +15,6 @@ use RoundlyConsulting\Events\Events\RsvpCancelled;
 use RoundlyConsulting\Events\Events\RsvpHeld;
 use RoundlyConsulting\Events\Events\RsvpHoldExpired;
 use RoundlyConsulting\Events\Events\RsvpPaymentRequestFailed;
-use RoundlyConsulting\Events\EventsManager;
 use RoundlyConsulting\Events\Exceptions\InvalidRsvpTransitionException;
 use RoundlyConsulting\Events\Exceptions\RsvpClosedException;
 use RoundlyConsulting\Events\Exceptions\RsvpHoldExpiredException;
@@ -23,6 +23,7 @@ use RoundlyConsulting\Events\Facades\Events;
 use RoundlyConsulting\Events\Jobs\RequestAdmissionPaymentJob;
 use RoundlyConsulting\Events\Models\Event;
 use RoundlyConsulting\Events\Models\Rsvp;
+use RoundlyConsulting\Events\Notifications\WaitlistPromotedNotification;
 use RoundlyConsulting\Events\Tests\Fixtures\Models\User;
 use RoundlyConsulting\Events\Tests\Fixtures\Payments\FakePaymentCollector;
 use RoundlyConsulting\Events\Tests\Support\Scenarios;
@@ -126,9 +127,9 @@ test('promotions_request_payment_on_the_queue', function (): void {
         ->and($rsvp?->held_until?->toIso8601String())->toBe(Scenarios::now()->addHours(24)->toIso8601String())
         ->and(FakePaymentCollector::$calls)->toHaveCount(0);
 
-    Bus::assertDispatched(RequestAdmissionPaymentJob::class, static fn (RequestAdmissionPaymentJob $job): bool => $job->rsvpId === $rsvp?->getKey());
+    Bus::assertDispatched(RequestAdmissionPaymentJob::class, static fn (RequestAdmissionPaymentJob $job): bool => $job->rsvpId === $rsvp?->getKey() && $job->promotion);
 
-    (new RequestAdmissionPaymentJob((int) $rsvp?->getKey()))->handle(app(EventsManager::class));
+    app()->call([new RequestAdmissionPaymentJob((int) $rsvp?->getKey(), promotion: true), 'handle']);
     expect($rsvp?->fresh()?->payment_reference)->not->toBeNull();
 
     // Near the start the hold ends at the start.
@@ -310,4 +311,107 @@ it('binds a host collector from config or the container', function (): void {
 
     config()->set('events.payments.collector', 'Not\\A\\Class');
     expect(fn () => app(CollectsAdmissionPayment::class))->toThrow(InvalidConfigurationException::class, 'events.payments.collector');
+});
+
+/**
+ * A full paid event with one attendee waiting: freeing the seat promotes them to a hold.
+ *
+ * @return array{0: Event, 1: User, 2: User}
+ */
+function paidWaitlist(): array
+{
+    $event = paidEvent(capacity: 1);
+    $first = User::factory()->create();
+    $waiting = User::factory()->create();
+    Events::for($event)->attendees()->add($first, tier: 'supporter');
+    Events::for($event)->rsvp($waiting)->going(tier: 'supporter');
+
+    return [$event, $first, $waiting];
+}
+
+/**
+ * @return list<string|null> the action URL of every waitlist_promoted mail `$user` got
+ */
+function promotedLinks(User $user): array
+{
+    return Notification::sent($user, WaitlistPromotedNotification::class)
+        ->map(static fn (WaitlistPromotedNotification $notice): ?string => $notice->toMail($user)->actionUrl)
+        ->values()->all();
+}
+
+test('a_promoted_hold_is_told_with_its_payment_link', function (): void {
+    Notification::fake();
+    config()->set('events.urls.event', 'https://example.com/events/{uuid}');
+    [$event, $first, $waiting] = paidWaitlist();
+
+    Events::for($event)->attendees()->remove($first);
+
+    $rsvp = $waiting->rsvpFor($event);
+    expect($rsvp?->status)->toBe(RsvpStatus::Held)
+        ->and($rsvp?->payment_url)->toStartWith('https://pay.example.com/')
+        ->and(promotedLinks($waiting))->toBe([$rsvp?->payment_url]);
+});
+
+test('a_promoted_hold_is_told_without_a_link_when_the_collector_fails', function (): void {
+    Notification::fake();
+    config()->set('events.urls.event', 'https://example.com/events/{uuid}');
+    [$event, $first, $waiting] = paidWaitlist();
+    FakePaymentCollector::$fails = true;
+
+    Events::for($event)->attendees()->remove($first);
+
+    expect($waiting->rsvpFor($event)?->status)->toBe(RsvpStatus::Held)
+        ->and($waiting->rsvpFor($event)?->payment_url)->toBeNull()
+        ->and(promotedLinks($waiting))->toBe(['https://example.com/events/'.$event->uuid]);
+});
+
+test('a_free_promotion_is_told_at_once', function (): void {
+    Notification::fake();
+    $event = Scenarios::event(capacity: 1);
+    $first = User::factory()->create();
+    $waiting = User::factory()->create();
+    Events::for($event)->rsvp($first)->going();
+    Events::for($event)->rsvp($waiting)->going();
+
+    Events::for($event)->rsvp($first)->notGoing();
+
+    expect($waiting->rsvpFor($event)?->status)->toBe(RsvpStatus::Going);
+    Notification::assertSentToTimes($waiting, WaitlistPromotedNotification::class, 1);
+});
+
+test('a_hold_released_before_the_job_runs_is_not_told', function (): void {
+    Notification::fake();
+    Bus::fake([RequestAdmissionPaymentJob::class]);
+    [$event, $first, $waiting] = paidWaitlist();
+
+    Events::for($event)->attendees()->remove($first);
+    $rsvp = $waiting->rsvpFor($event);
+    Events::rsvps()->release($rsvp);
+
+    $job = Bus::dispatched(RequestAdmissionPaymentJob::class)->sole();
+    expect($job->promotion)->toBeTrue();
+    app()->call([$job, 'handle']);
+
+    expect(FakePaymentCollector::$calls)->toHaveCount(0);
+    Notification::assertNotSentTo($waiting, WaitlistPromotedNotification::class);
+});
+
+test('each_promotion_is_told_once', function (): void {
+    Notification::fake();
+    Bus::fake([RequestAdmissionPaymentJob::class]);
+    [$event, $first, $waiting] = paidWaitlist();
+
+    Events::for($event)->attendees()->remove($first);
+    $rsvp = $waiting->rsvpFor($event);
+    // The host asked for the checkout itself before the job ran: the job still tells, once.
+    $request = Events::rsvps()->requestPayment($rsvp);
+    $job = Bus::dispatched(RequestAdmissionPaymentJob::class)->sole();
+    app()->call([$job, 'handle']);
+
+    expect(FakePaymentCollector::$calls)->toHaveCount(1)
+        ->and(promotedLinks($waiting))->toBe([$request?->url]);
+
+    // A hold that is not a promotion (a party change) never tells "promoted".
+    app()->call([new RequestAdmissionPaymentJob((int) $rsvp?->getKey()), 'handle']);
+    Notification::assertSentToTimes($waiting, WaitlistPromotedNotification::class, 1);
 });

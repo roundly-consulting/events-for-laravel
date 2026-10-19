@@ -6,6 +6,7 @@ namespace RoundlyConsulting\Events\Listeners;
 
 use Illuminate\Database\Eloquent\Model;
 use RoundlyConsulting\Events\Enums\EventPhase;
+use RoundlyConsulting\Events\Enums\RsvpStatus;
 use RoundlyConsulting\Events\Events\AttendeeConfirmed;
 use RoundlyConsulting\Events\Events\AttendeePromoted;
 use RoundlyConsulting\Events\Events\EventCancelled;
@@ -51,11 +52,15 @@ final readonly class SendEventNotifications
         }
     }
 
+    /**
+     * A free promotion is told at once. A promotion to a hold is told by the payment job, after
+     * the checkout exists, so the notice carries its link.
+     */
     public function promoted(AttendeePromoted $promoted): void
     {
         $attendee = $promoted->rsvp->attendee;
 
-        if ($attendee instanceof Model) {
+        if ($attendee instanceof Model && $promoted->rsvp->status !== RsvpStatus::Held) {
             $this->notifier->send('waitlist_promoted', $promoted->rsvp->event, [$attendee], $promoted->rsvp);
         }
     }
