@@ -30,6 +30,7 @@ final class EventTransitions
     /**
      * @param  array<string, mixed>  $payload
      * @param  (Closure(Event): void)|null  $before  runs under the lock, before the transition
+     * @param  bool  $reschedule  events' own reschedule, which moved the date in `$before`
      */
     public static function apply(
         Event $event,
@@ -40,13 +41,14 @@ final class EventTransitions
         array $payload = [],
         bool $silent = false,
         ?Closure $before = null,
+        bool $reschedule = false,
     ): TransitionResult {
         App::make(LifecycleCheck::class)->assertValid();
 
-        return EventTransaction::run($event, static function () use ($event, $transition, $actor, $system, $reason, $payload, $silent, $before): TransitionResult {
+        return EventTransaction::run($event, static function () use ($event, $transition, $actor, $system, $reason, $payload, $silent, $before, $reschedule): TransitionResult {
             LockedEvent::lock($event);
 
-            $note = new TransitionNote($silent, $event->starts_at);
+            $note = new TransitionNote($silent, $event->starts_at, $reschedule);
 
             if ($before !== null) {
                 $before($event);
@@ -64,6 +66,8 @@ final class EventTransitions
                 $unknown = array_filter($exception->denials(), static fn (Denial $denial): bool => $denial->is(DenialCode::UnknownTransition));
 
                 throw $unknown === [] ? EventTransitionDeniedException::wrap($exception) : UnknownEventTransitionException::named($transition);
+            } finally {
+                App::make(TransitionNotes::class)->settle($event);
             }
         });
     }

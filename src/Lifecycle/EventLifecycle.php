@@ -81,7 +81,9 @@ class EventLifecycle extends LifecycleDefinition implements EventLifecycleContra
             ->from(EventStatus::Scheduled, EventStatus::Postponed, EventStatus::Rescheduled)
             ->to(EventStatus::Rescheduled)
             ->allowSelf()
-            ->allowSystem();
+            ->allowSystem()
+            // Only events' reschedule() moves the date; every other path is refused.
+            ->when(RescheduledThroughEvents::class);
 
         $lifecycle->transition(self::CANCEL)
             ->from(EventStatus::Scheduled, EventStatus::Postponed, EventStatus::Rescheduled)

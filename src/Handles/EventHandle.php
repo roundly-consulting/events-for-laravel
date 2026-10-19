@@ -36,11 +36,13 @@ use RoundlyConsulting\Events\Enums\EventPhase;
 use RoundlyConsulting\Events\Enums\Visibility;
 use RoundlyConsulting\Events\EventsManager;
 use RoundlyConsulting\Events\Exceptions\InvalidEventLifecycleException;
+use RoundlyConsulting\Events\Lifecycle\RescheduledThroughEvents;
 use RoundlyConsulting\Events\Models\Event;
 use RoundlyConsulting\Events\Support\EventAuthorization;
 use RoundlyConsulting\Events\Support\EventsConfig;
 use RoundlyConsulting\Events\Support\Ics\IcsWriter;
 use RoundlyConsulting\Lifecycle\DataTransferObjects\AvailableTransition;
+use RoundlyConsulting\Lifecycle\DataTransferObjects\Denial;
 use RoundlyConsulting\Lifecycle\DataTransferObjects\TransitionResult;
 use RoundlyConsulting\Lifecycle\LifecycleHandle;
 use RoundlyConsulting\Lifecycle\LifecycleManager;
@@ -380,7 +382,8 @@ final readonly class EventHandle
     }
 
     /**
-     * Whether the transition is allowed now (for the handle's actor, policy included).
+     * Whether the transition is allowed now (for the handle's actor, policy included). For
+     * `reschedule` it answers for `reschedule()`, the one path that moves the date.
      */
     public function can(string $transition): bool
     {
@@ -388,11 +391,13 @@ final readonly class EventHandle
             return false;
         }
 
-        return $this->lifecycle()->can($transition);
+        $decision = $this->lifecycle()->check($transition);
+
+        return $decision->allowed || self::onlyNeedsEventsReschedule($decision->denials);
     }
 
     /**
-     * The names of the transitions allowed now.
+     * The names of the transitions allowed now (`reschedule` meaning `reschedule()`).
      *
      * @return list<string>
      */
@@ -402,10 +407,12 @@ final readonly class EventHandle
             return [];
         }
 
-        return array_map(
-            static fn (AvailableTransition $transition): string => $transition->name,
-            $this->lifecycle()->allowedTransitions(),
+        $allowed = array_filter(
+            $this->lifecycle()->allowedTransitions(includeDenied: true),
+            static fn (AvailableTransition $transition): bool => $transition->allowed || self::onlyNeedsEventsReschedule($transition->denials),
         );
+
+        return array_values(array_map(static fn (AvailableTransition $transition): string => $transition->name, $allowed));
     }
 
     public function phase(): EventPhase
@@ -534,6 +541,16 @@ final readonly class EventHandle
     public function context(array $extra = []): array
     {
         return ['event' => $this->event, 'actor' => $this->actor, 'system' => $this->system, 'silent' => $this->silent, ...$extra];
+    }
+
+    /**
+     * The reschedule guard is the only denial: events' own `reschedule()` passes it.
+     *
+     * @param  list<Denial>  $denials
+     */
+    private static function onlyNeedsEventsReschedule(array $denials): bool
+    {
+        return $denials !== [] && array_filter($denials, static fn (Denial $denial): bool => $denial->code !== RescheduledThroughEvents::CODE) === [];
     }
 
     private function lifecycle(): LifecycleHandle

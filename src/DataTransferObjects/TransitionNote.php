@@ -17,5 +17,6 @@ final readonly class TransitionNote
     public function __construct(
         public bool $silent = false,
         public ?CarbonImmutable $previousStartsAt = null,
+        public bool $reschedule = false,
     ) {}
 }

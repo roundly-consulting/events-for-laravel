@@ -30,6 +30,7 @@ use RoundlyConsulting\Events\Support\Clock;
 use RoundlyConsulting\Events\Tests\Fixtures\Lifecycles\BrokenLifecycle;
 use RoundlyConsulting\Events\Tests\Fixtures\Lifecycles\CustomLifecycle;
 use RoundlyConsulting\Events\Tests\Fixtures\Models\User;
+use RoundlyConsulting\Lifecycle\Exceptions\TransitionDeniedException;
 use RoundlyConsulting\Lifecycle\Facades\Lifecycles;
 use RoundlyConsulting\Money\Money;
 
@@ -312,4 +313,64 @@ test('swapped_lifecycle_is_supported', function (): void {
 
     config()->set('events.lifecycle', Clock::class);
     expect(fn () => Event::query()->inPhase(EventPhase::Draft)->get())->toThrow(InvalidEventLifecycleException::class, 'events.lifecycle');
+});
+
+test('reschedule_runs_only_through_events', function (): void {
+    $event = publishedEvent($this->user);
+    $startsAt = $event->starts_at->toIso8601String();
+    $denialCodes = static function (Closure $call): array {
+        try {
+            $call();
+        } catch (TransitionDeniedException $exception) {
+            return array_map(static fn ($denial): string => $denial->code, $exception->denials());
+        } catch (EventTransitionDeniedException $exception) {
+            return $exception->denials();
+        }
+
+        return [];
+    };
+
+    // Lifecycle's own paths and the generic transition verb move no time, so they are refused.
+    expect($denialCodes(fn () => Lifecycles::for($event, 'status')->asSystem()->apply('reschedule')))->toContain('rescheduled_through_events')
+        ->and($denialCodes(fn () => Lifecycles::for($event, 'status')->by($this->user)->apply('reschedule')))->toContain('rescheduled_through_events')
+        ->and($denialCodes(fn () => $event->transition('reschedule')))->toContain('rescheduled_through_events')
+        ->and($denialCodes(fn () => Events::for($event)->transition('reschedule')))->toContain('rescheduled_through_events');
+
+    $fresh = $event->fresh();
+    expect($fresh?->phase)->toBe(EventPhase::Scheduled)
+        ->and($fresh?->starts_at->toIso8601String())->toBe($startsAt)
+        ->and($fresh?->previous_starts_at)->toBeNull()
+        ->and(Events::jsonLd($fresh ?? $event)['eventStatus'] ?? null)->toBe('https://schema.org/EventScheduled')
+        // The handle's can() answers for reschedule(), which passes the guard.
+        ->and(Events::for($event)->can('reschedule'))->toBeTrue()
+        ->and(Events::for($event)->allowedTransitions())->toContain('reschedule')
+        ->and(Lifecycles::for($event, 'status')->asSystem()->can('reschedule'))->toBeFalse();
+
+    // Events' own verb moves the date, as before — the guard lets it through.
+    Events::for($event)->reschedule('2027-03-10 20:00');
+    expect($event->fresh()?->phase)->toBe(EventPhase::Rescheduled)
+        ->and($event->fresh()?->previous_starts_at?->toIso8601String())->toBe($startsAt);
+
+    // And again, from rescheduled (self-transition).
+    Events::for($event)->reschedule('2027-03-11 20:00');
+    expect($event->fresh()?->starts_at->toIso8601String())->toBe(CarbonImmutable::parse('2027-03-11 19:00:00', 'UTC')->toIso8601String());
+    expect($denialCodes(fn () => Lifecycles::for($event, 'status')->asSystem()->apply('reschedule')))->toContain('rescheduled_through_events');
+
+    // A cancelled event cannot be rescheduled at all.
+    Events::for($event)->cancel();
+    expect(Events::for($event)->can('reschedule'))->toBeFalse()
+        ->and(Events::for($event)->allowedTransitions())->toBe([]);
+});
+
+test('a_scheduled_lifecycle_reschedule_is_denied_when_it_runs', function (): void {
+    $event = publishedEvent($this->user);
+    $startsAt = $event->starts_at->toIso8601String();
+
+    Lifecycles::for($event, 'status')->schedule('reschedule', Clock::now()->addHour());
+    CarbonImmutable::setTestNow(Clock::now()->addHours(2));
+    $result = Lifecycles::sweep(queue: false);
+
+    expect($result->executed)->toBe(0)
+        ->and($event->fresh()?->phase)->toBe(EventPhase::Scheduled)
+        ->and($event->fresh()?->starts_at->toIso8601String())->toBe($startsAt);
 });

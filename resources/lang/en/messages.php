@@ -89,6 +89,7 @@ return [
     'unknown_transition_named' => 'The event lifecycle has no transition named ":transition".',
     'transition_denied' => 'The event cannot change to that status now.',
     'denial_no_attendees' => 'People are coming to this event. Postpone or cancel it so they are told.',
+    'denial_rescheduled_through_events' => 'Reschedule an event with Events::for($event)->reschedule() so its date moves.',
     'organizer_not_allowed' => 'You may not organize events as this organizer.',
     'unknown_alias' => 'The referenced record does not exist.',
     'forbidden' => 'This action is not allowed.',

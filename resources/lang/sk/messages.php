@@ -89,6 +89,7 @@ return [
     'unknown_transition_named' => 'Životný cyklus podujatia nemá prechod s názvom „:transition“.',
     'transition_denied' => 'Podujatie teraz nemôže prejsť do tohto stavu.',
     'denial_no_attendees' => 'Na podujatie sa prihlásili ľudia. Odložte ho alebo zrušte, aby sa to dozvedeli.',
+    'denial_rescheduled_through_events' => 'Termín podujatia zmeňte cez „Events::for($event)->reschedule()“, aby sa dátum naozaj posunul.',
     'organizer_not_allowed' => 'Za tohto organizátora nemôžete organizovať podujatia.',
     'unknown_alias' => 'Odkazovaný záznam neexistuje.',
     'forbidden' => 'Táto akcia nie je povolená.',

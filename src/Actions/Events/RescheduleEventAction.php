@@ -60,6 +60,7 @@ final readonly class RescheduleEventAction
             $system,
             $reason,
             silent: $silent,
+            reschedule: true,
             before: function (Event $locked) use ($startsAt, $endsAt): void {
                 $schedule = $this->resolve($locked, $startsAt, $endsAt);
 
