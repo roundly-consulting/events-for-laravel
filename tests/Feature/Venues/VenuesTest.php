@@ -2,10 +2,13 @@
 
 declare(strict_types=1);
 
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Event as EventBus;
+use Illuminate\Support\Facades\Gate;
 use RoundlyConsulting\Events\DataTransferObjects\AddressData;
 use RoundlyConsulting\Events\DataTransferObjects\UpdateVenueData;
+use RoundlyConsulting\Events\DataTransferObjects\VenueData;
 use RoundlyConsulting\Events\Events\VenueDeleted;
 use RoundlyConsulting\Events\Events\VenueGeocoded;
 use RoundlyConsulting\Events\Events\VenueGeocodingFailed;
@@ -65,8 +68,8 @@ test('venue_rules_need_a_name_and_a_valid_timezone', function (): void {
 
 test('venue_rules_refuse_deleting_a_venue_in_use', function (): void {
     EventBus::fake([VenueDeleted::class, VenueRestored::class]);
-    $venue = Venue::factory()->create();
     $user = User::factory()->create();
+    $venue = Venue::factory()->ownedBy($user)->create();
 
     $draft = Event::factory()->at($venue)->create();
     expect(fn () => Events::venues()->delete($venue))->toThrow(InvalidVenueException::class, 'Events that are still on use this venue.');
@@ -216,4 +219,71 @@ it('finds venues by owner and distance', function (): void {
         ->and(Events::venues()->find($near->getKey())?->is($near))->toBeTrue()
         ->and(fn () => Events::venues()->near($here, 0)->get())->toThrow(InvalidVenueException::class)
         ->and(fn () => Events::venues()->near($here, 501)->get())->toThrow(InvalidVenueException::class, 'at most 500 km');
+});
+
+test('shared_venues_are_managed_by_admins_or_the_shared_venues_ability', function (): void {
+    $team = Team::factory()->create();
+    $member = User::factory()->create();
+    $team->members()->attach($member);
+    $plain = User::factory()->create();
+    $admin = User::factory()->create();
+    $holder = User::factory()->create();
+    Gate::define('events.admin', static fn (User $user): bool => $user->is($admin));
+    Gate::define('events.shared-venues', static fn (User $user): bool => $user->is($holder));
+    $shared = Venue::factory()->create();
+    $owned = Venue::factory()->ownedBy($team)->create();
+
+    $matrix = static fn (Venue $venue): array => collect(['plain' => $plain, 'member' => $member, 'admin' => $admin, 'holder' => $holder])
+        ->map(static fn (User $user): string => implode('', array_map(
+            static fn (string $ability): string => Gate::forUser($user)->allows($ability, $venue) ? 'y' : 'n',
+            ['update', 'delete', 'restore', 'geocode'],
+        )))->all();
+
+    // Null ability: only admins manage shared venues; owned ones stay with their owner's users.
+    expect($matrix($shared))->toBe(['plain' => 'nnnn', 'member' => 'nnnn', 'admin' => 'yyyy', 'holder' => 'nnnn'])
+        ->and($matrix($owned))->toBe(['plain' => 'nnnn', 'member' => 'yyyy', 'admin' => 'yyyy', 'holder' => 'nnnn']);
+
+    config()->set('events.authorization.abilities.shared_venues', 'events.shared-venues');
+    expect($matrix($shared))->toBe(['plain' => 'nnnn', 'member' => 'nnnn', 'admin' => 'yyyy', 'holder' => 'yyyy'])
+        ->and($matrix($owned))->toBe(['plain' => 'nnnn', 'member' => 'yyyy', 'admin' => 'yyyy', 'holder' => 'nnnn']);
+
+    // The actions enforce it; PHP without an actor stays trusted.
+    expect(fn () => Events::venues()->by($plain)->update($shared, new UpdateVenueData(capacity: 1)))->toThrow(AuthorizationException::class)
+        ->and(fn () => Events::venues()->by($plain)->delete($shared))->toThrow(AuthorizationException::class)
+        ->and(fn () => Events::venues()->make('Shared hall')->by($plain)->create())->toThrow(AuthorizationException::class)
+        ->and(Events::venues()->by($holder)->update($shared, new UpdateVenueData(capacity: 5))->capacity)->toBe(5)
+        ->and(Events::venues()->make('Shared hall')->by($holder)->create()->owner_type)->toBeNull()
+        ->and(Events::venues()->update($shared, new UpdateVenueData(capacity: 7))->capacity)->toBe(7)
+        ->and(Events::venues()->make('Trusted hall')->create()->owner_type)->toBeNull();
+});
+
+test('a_venue_owner_must_allow_the_actor', function (): void {
+    $team = Team::factory()->create();
+    $member = User::factory()->create();
+    $team->members()->attach($member);
+    $outsider = User::factory()->create();
+    $admin = User::factory()->create();
+    Gate::define('events.admin', static fn (User $user): bool => $user->is($admin));
+
+    expect(fn () => Events::venues()->create(new VenueData(name: 'Spam Hall', owner: $team, actor: $outsider)))->toThrow(AuthorizationException::class)
+        ->and(Events::venues()->ownedBy($team)->count())->toBe(0)
+        ->and(Events::venues()->create(new VenueData(name: 'Team Hall', owner: $team, actor: $member))->owner_id)->toBe($team->getKey())
+        ->and(Events::venues()->create(new VenueData(name: 'Own studio', owner: $outsider, actor: $outsider))->owner_id)->toBe($outsider->getKey())
+        ->and(Events::venues()->create(new VenueData(name: 'Admin Hall', owner: $team, actor: $admin))->owner_id)->toBe($team->getKey())
+        ->and(Events::venues()->create(new VenueData(name: 'Seeded Hall', owner: $team))->owner_id)->toBe($team->getKey());
+});
+
+test('any_organizer_may_still_hold_an_event_at_any_venue', function (): void {
+    $alice = User::factory()->create();
+    $bob = User::factory()->create();
+    $alicesVenue = Venue::factory()->ownedBy($alice)->create(['timezone' => 'Europe/Bratislava']);
+    $shared = Venue::factory()->create(['timezone' => 'Europe/Bratislava']);
+
+    // D-4: venues are physical places; ownership governs editing, never use.
+    $atOwned = Events::make('Bob at Alice\'s')->organizedBy($bob)->by($bob)->at($alicesVenue)->startsAt('2027-03-01 20:00')->create();
+    $atShared = Events::make('Bob at the hall')->organizedBy($bob)->by($bob)->at($shared)->startsAt('2027-03-02 20:00')->create();
+
+    expect($atOwned->venue_id)->toBe($alicesVenue->getKey())
+        ->and($atShared->venue_id)->toBe($shared->getKey())
+        ->and(fn () => Events::venues()->by($bob)->update($alicesVenue, new UpdateVenueData(capacity: 1)))->toThrow(AuthorizationException::class);
 });

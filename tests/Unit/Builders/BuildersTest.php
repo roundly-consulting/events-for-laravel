@@ -20,6 +20,7 @@ afterEach(fn () => Scenarios::thaw());
 it('builds a venue with every setter', function (): void {
     $team = Team::factory()->create();
     $user = User::factory()->create();
+    $team->members()->attach($user);   // the owner must allow the actor
 
     $builder = Events::venues()->make(['en' => 'Hall', 'sk' => 'Sála'])
         ->address(street: 'Main 1', city: 'Košice', region: 'KE', postalCode: '040 01', country: 'sk')

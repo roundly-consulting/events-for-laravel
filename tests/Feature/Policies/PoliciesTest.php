@@ -112,7 +112,9 @@ it('authorizes venues', function (): void {
         ->and(Gate::forUser($this->organizer)->allows('update', $owned))->toBeTrue()
         ->and(Gate::forUser($this->stranger)->allows('delete', $owned))->toBeFalse()
         ->and(Gate::forUser($admin)->allows('restore', $owned))->toBeTrue()
-        ->and(Gate::forUser($this->stranger)->allows('geocode', $shared))->toBeTrue()
+        // A shared venue is no plain user's to change (admins only while shared_venues is null).
+        ->and(Gate::forUser($this->stranger)->allows('geocode', $shared))->toBeFalse()
+        ->and(Gate::forUser($admin)->allows('update', $shared))->toBeTrue()
         ->and(Gate::forUser(null)->allows('update', $shared))->toBeFalse()
         ->and(Gate::forUser(null)->allows('create', Venue::class))->toBeFalse();
 

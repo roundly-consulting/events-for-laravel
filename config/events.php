@@ -428,7 +428,9 @@ return [
     | The policy decides who views and manages events. Managers are the organizer's approved
     | users, co-hosts' approved users, and holders of the `admin` ability (undefined = nobody).
     | `create` / `venues` name a Gate ability that may create events / venues; null lets any
-    | authenticated user.
+    | authenticated user. An owned venue is managed by the users its owner allows; a shared
+    | venue (no owner, used by many organizers' events) by admins and holders of
+    | `shared_venues` — null = admins only.
     |
     */
 
@@ -440,6 +442,7 @@ return [
             'create' => null,
             'admin' => 'events.admin',
             'venues' => null,
+            'shared_venues' => null,
         ],
     ],
 

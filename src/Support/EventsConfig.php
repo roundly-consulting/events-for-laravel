@@ -309,6 +309,15 @@ final class EventsConfig
     }
 
     /**
+     * The Gate ability that creates and manages shared venues (no owner), besides admins; null =
+     * admins only.
+     */
+    public static function sharedVenuesAbility(): ?string
+    {
+        return self::nullableString(config('events.authorization.abilities.shared_venues'), 'events.authorization.abilities.shared_venues');
+    }
+
+    /**
      * The organizer classes the host listed (`events.organizers`, alias => class).
      *
      * @return array<string, class-string<Model>>

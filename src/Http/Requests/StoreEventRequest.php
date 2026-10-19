@@ -113,6 +113,8 @@ final class StoreEventRequest extends EventsRequest
             ),
             coordinates: self::coordinates($venue['coordinates'] ?? null),
             timezone: $venue['timezone'] ?? null,
+            // Like POST /event-venues without an owner: the caller's own venue.
+            owner: $user,
             actor: $user,
         );
     }

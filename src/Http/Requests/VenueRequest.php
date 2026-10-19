@@ -12,7 +12,9 @@ use RoundlyConsulting\Events\Support\NotGiven;
 use RoundlyConsulting\Geolocation\Rules\CoordinatesRule;
 
 /**
- * A venue: create (`POST`) or change (`PATCH`, only the fields sent).
+ * A venue: create (`POST`) or change (`PATCH`, only the fields sent). A new venue is owned by the
+ * caller unless the body names an `owner` (who must allow the caller) or asks for a `shared` one
+ * (admins and the `shared_venues` ability).
  *
  * @internal
  */
@@ -39,6 +41,7 @@ final class VenueRequest extends EventsRequest
             'timezone' => ['sometimes', 'timezone:all'],
             'capacity' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:10000000'],
             ...self::reference('owner'),
+            'shared' => ['sometimes', 'boolean', 'prohibits:owner'],
             'geocode' => ['sometimes', 'boolean'],
         ];
     }
@@ -55,7 +58,7 @@ final class VenueRequest extends EventsRequest
             coordinates: self::coordinates($data['coordinates'] ?? null),
             timezone: $data['timezone'] ?? null,
             capacity: isset($data['capacity']) ? (int) $data['capacity'] : null,
-            owner: $owner === null ? null : self::resolvePerson($owner, 'organizer'),
+            owner: $owner === null ? ((bool) ($data['shared'] ?? false) ? null : $user) : self::resolvePerson($owner, 'organizer'),
             geocode: (bool) ($data['geocode'] ?? false),
             actor: $user,
         );
