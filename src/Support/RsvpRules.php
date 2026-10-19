@@ -112,8 +112,13 @@ final class RsvpRules
      * none — the single visible one on sale. An event without ticket types admits for free.
      * Hidden ticket types are assignable by managers only, and look unknown to everyone else.
      */
-    public static function tier(SeatBook $book, AdmissionTier|int|string|null $tier, bool $manager): ?AdmissionTier
+    public static function tier(SeatBook $book, AdmissionTier|int|string|null $tier, bool $manager, bool $keepNone = false): ?AdmissionTier
     {
+        // An RSVP from before the event had ticket types keeps holding none.
+        if ($keepNone) {
+            return null;
+        }
+
         if (! $book->hasTiers()) {
             if ($tier !== null) {
                 throw TierNotFoundException::missing();

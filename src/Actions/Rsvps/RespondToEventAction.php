@@ -98,9 +98,11 @@ final readonly class RespondToEventAction
         $current = $rsvp->exists ? $rsvp->status : null;
         $currentTier = $rsvp->exists && $rsvp->tier_id !== null ? (int) $rsvp->tier_id : null;
         $currentParty = $rsvp->exists ? $rsvp->partySize() : 0;
-        $keepsTier = $request->tier === null && $currentTier !== null && in_array($current, [RsvpStatus::Going, RsvpStatus::Held, RsvpStatus::Waitlisted], true);
+        // An answer that names no ticket type keeps what the RSVP holds — none included (a seat
+        // from before the event had ticket types).
+        $keepsTier = $request->tier === null && in_array($current, [RsvpStatus::Going, RsvpStatus::Held, RsvpStatus::Waitlisted], true);
 
-        $tier = RsvpRules::tier($book, $keepsTier ? $currentTier : $request->tier, $manager);
+        $tier = RsvpRules::tier($book, $keepsTier ? $currentTier : $request->tier, $manager, keepNone: $keepsTier && $currentTier === null);
         RsvpRules::assertParty($book->event, $tier, $request->guests);
 
         $tierId = $tier === null ? null : (int) $tier->getKey();

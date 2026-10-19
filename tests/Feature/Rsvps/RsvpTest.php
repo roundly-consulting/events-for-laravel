@@ -425,3 +425,36 @@ it('fires RsvpCancelled when someone leaves their seats', function (): void {
     expect($event->fresh()?->interested_count)->toBe(1)
         ->and($event->fresh()?->seats_taken)->toBe(0);
 });
+
+test('a_going_rsvp_from_before_ticket_types_keeps_its_free_seat', function (): void {
+    $event = Scenarios::event(capacity: 10, maxGuests: 3);
+    $user = User::factory()->create();
+    Events::for($event)->rsvp($user)->going();
+    Events::for($event)->tiers()->add('Free', key: 'free');
+    Events::for($event)->tiers()->add('VIP', price: Money::ofMajor('10', 'EUR'), key: 'vip');
+
+    // A party change names no ticket type: the RSVP keeps what it holds — none.
+    $rsvp = Events::for($event)->rsvp($user)->going(guests: 1);
+
+    expect($rsvp->status)->toBe(RsvpStatus::Going)
+        ->and($rsvp->tier_id)->toBeNull()
+        ->and($rsvp->guests)->toBe(1)
+        ->and($event->fresh()?->seats_taken)->toBe(2)
+        // Checked against the event's own 1 + max_guests.
+        ->and(fn () => Events::for($event)->rsvp($user)->going(guests: 4))->toThrow(InvalidGuestCountException::class);
+});
+
+test('naming_a_tier_moves_a_tierless_rsvp_under_the_usual_rules', function (): void {
+    $event = Scenarios::event(capacity: 10, maxGuests: 3);
+    $free = User::factory()->create();
+    $paid = User::factory()->create();
+    Events::for($event)->rsvp($free)->going();
+    Events::for($event)->rsvp($paid)->going();
+    $tier = Events::for($event)->tiers()->add('Free', key: 'free');
+    Events::for($event)->tiers()->add('VIP', price: Money::ofMajor('10', 'EUR'), key: 'vip');
+
+    expect(Events::for($event)->rsvp($free)->going(tier: 'free')->tier_id)->toBe($tier->getKey())
+        // OQ-52: a paid ticket type changes by hand.
+        ->and(fn () => Events::for($event)->rsvp($paid)->going(tier: 'vip'))->toThrow(InvalidRsvpTransitionException::class)
+        ->and($paid->rsvpFor($event)?->tier_id)->toBeNull();
+});
