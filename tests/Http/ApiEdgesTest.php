@@ -106,3 +106,12 @@ test('popularity_never_ranks_hidden_counts', function (): void {
     $mine = collect($this->actingAs($this->organizer)->getJson('/api/events?filter[mine]=organizing&sort=-popularity')->assertOk()->json('data'))->pluck('title')->all();
     expect($mine[0])->toBe('Quiet');
 });
+
+test('an_impossible_date_filter_is_refused', function (string $date): void {
+    $this->getJson('/api/events?filter[date]='.$date)->assertStatus(422);
+})->with(['2026-13-45', '2027-02-30', '2027-2-3']);
+
+test('an_impossible_local_date_scope_is_refused', function (): void {
+    expect(fn () => Event::query()->onLocalDate('2027-02-30')->get())->toThrow(InvalidEventScheduleException::class)
+        ->and(Event::query()->onLocalDate('2027-02-10')->count())->toBe(0);
+});

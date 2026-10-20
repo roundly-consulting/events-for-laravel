@@ -725,7 +725,8 @@ class Event extends Model implements HasMedia, LifecycleSubject, Sluggable, Tagg
      */
     public function scopeOnLocalDate(Builder $query, CarbonInterface|string $date): void
     {
-        $day = $date instanceof CarbonInterface ? $date->format('Y-m-d') : CarbonImmutable::parse($date)->format('Y-m-d');
+        // A string is a real calendar date (`Y-m-d`): 2027-02-30 is refused, never read as 03-02.
+        $day = $date instanceof CarbonInterface ? $date->format('Y-m-d') : WallClock::startOfDay($date, 'UTC')->format('Y-m-d');
 
         $query->where($query->qualifyColumn('starts_on'), '<=', $day)
             ->where($query->qualifyColumn('ends_on'), '>=', $day);

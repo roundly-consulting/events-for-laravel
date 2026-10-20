@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Events\Http\Queries;
 
-use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
@@ -57,11 +56,11 @@ final class EventIndexQuery
                 AllowedFilter::callback('date', static function (Builder $query, mixed $value): void {
                     $date = self::first($value, 'date');
 
-                    if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) !== 1) {
+                    if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $date, $parts) !== 1 || ! checkdate((int) $parts[2], (int) $parts[3], (int) $parts[1])) {
                         throw InvalidEventQueryException::invalidValue('date');
                     }
 
-                    $query->scopes(['onLocalDate' => [CarbonImmutable::parse($date)]]);
+                    $query->scopes(['onLocalDate' => [$date]]);
                 }),
                 AllowedFilter::callback('near', static function (Builder $query) use ($near): void {
                     if ($near !== null) {
