@@ -6,6 +6,8 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 
 ## Unreleased
 
+## 1.1.0 - 2026-10-20
+
 ### Added
 
 - Migration `0008_store_event_instants_as_datetime` (tag `events-migrations`): on MySQL and MariaDB every instant column of the package's seven tables — the schedule, the RSVP window, sale windows, holds, check-ins, reminders, the status stamps and `created_at` / `updated_at` / `deleted_at` — becomes `DATETIME`. On PostgreSQL and SQLite both column types are the same and it changes nothing. `events:doctor` warns while the events table still stores `TIMESTAMP`.
