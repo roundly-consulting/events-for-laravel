@@ -6,6 +6,7 @@ namespace RoundlyConsulting\Events\Actions\Events;
 
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
+use Carbon\CarbonInterval;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Database\Eloquent\Model;
 use RoundlyConsulting\Events\Actions\Internal\AutoPromoteAction;
@@ -25,7 +26,8 @@ use RoundlyConsulting\Events\Support\SeatBook;
 
 /**
  * Gives an event a new date. Times are read in the event's timezone (an instant stays an
- * instant). Without a new end the event keeps its length.
+ * instant). Without a new end the event keeps its length — exactly, in seconds (an all-day event:
+ * its number of days).
  *
  * Atomic: under the event's lock it writes the new times, keeps the originally announced start
  * in `previous_starts_at` (the first reschedule only, per schema.org), then applies the lifecycle's reschedule transition in the same transaction — a
@@ -126,7 +128,8 @@ final readonly class RescheduleEventAction
             return $this->schedules->execute(new ScheduleData(allDayFrom: $from, allDayThrough: $through), $timezone);
         }
 
-        $length = $event->starts_at->diffAsCarbonInterval($event->ends_at);
+        // The exact length: a calendar interval ("1 month") would stretch or shrink with the month.
+        $length = CarbonInterval::seconds((int) $event->starts_at->diffInSeconds($event->ends_at, true));
 
         return $this->schedules->execute(
             $endsAt === null

@@ -202,7 +202,8 @@ final readonly class UpdateEventAction
         $ends = match (true) {
             ! $data->endsAt instanceof NotGiven => WallClock::toUtc($data->endsAt, $timezone),
             ! $data->duration instanceof NotGiven => $this->schedules->execute(new ScheduleData(startsAt: $starts, duration: $data->duration), $timezone)->endsAt,
-            ! $data->startsAt instanceof NotGiven => $starts->add($event->starts_at->diffAsCarbonInterval($event->ends_at)),
+            // A new start keeps the exact length, in seconds (never a calendar interval).
+            ! $data->startsAt instanceof NotGiven => $starts->addSeconds((int) $event->starts_at->diffInSeconds($event->ends_at, true)),
             default => $event->ends_at,
         };
         $doors = match (true) {
