@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace RoundlyConsulting\Events\Support;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Database\Eloquent\SoftDeletingScope;
 use RoundlyConsulting\Events\DataTransferObjects\CheckInResult;
 use RoundlyConsulting\Events\Enums\CheckInMethod;
 use RoundlyConsulting\Events\Enums\EventPhase;
@@ -27,6 +30,9 @@ use SensitiveParameter;
  * holding the scanned code — because the RSVP was read without a lock: a decline, a removal or a
  * code rotation that commits in between makes the write change nothing, and the re-read names
  * why. A checked-in RSVP is never one that left.
+ *
+ * The attendee is resolved before anything is written — a soft-deleted account included (its RSVP
+ * keeps its seat, so its ticket still checks in); a row that is gone refuses the scan unwritten.
  *
  * @internal
  */
@@ -66,6 +72,7 @@ final class CheckInWriter
         }
 
         KeyTypes::assertMorphable($by);
+        $attendee = self::attendee($rsvp) ?? throw RsvpNotFoundException::missing();
         $query = EventModels::rsvp()::query()->whereKey($rsvp->getKey())->where('status', RsvpStatus::Going->value);
 
         if ($codeHash !== null) {
@@ -86,14 +93,36 @@ final class CheckInWriter
 
         $rsvp->refresh();
 
+        $rsvp->setRelation('attendee', $attendee);
+
         return new CheckInResult(
             $rsvp,
-            $rsvp->attendee ?? throw RsvpNotFoundException::missing(),
+            $attendee,
             $first,
             (int) $rsvp->checked_in_guests,
             $rsvp->checked_in_at ?? Clock::now(),
             $rsvp->check_in_method ?? $method,
         );
+    }
+
+    /**
+     * The RSVP's attendee, a soft-deleted one included.
+     */
+    private static function attendee(Rsvp $rsvp): ?Model
+    {
+        $attendee = $rsvp->attendee;
+
+        if ($attendee !== null) {
+            return $attendee;
+        }
+
+        $class = Relation::getMorphedModel($rsvp->attendee_type) ?? $rsvp->attendee_type;
+
+        if (! is_a($class, Model::class, true) || ! in_array(SoftDeletes::class, class_uses_recursive($class), true)) {
+            return null;
+        }
+
+        return $class::query()->withoutGlobalScope(SoftDeletingScope::class)->whereKey($rsvp->attendee_id)->first();
     }
 
     /**

@@ -107,3 +107,27 @@ test('json_ld_offers_follow_the_sale_window', function (): void {
         ->and($offers['Early bird']['validThrough'] ?? null)->toBe('2027-01-01T12:30:00+01:00')
         ->and($offers['Regular']['availability'] ?? null)->toBe('https://schema.org/InStock');
 });
+
+test('a_soft_deleted_attendee_scan_is_all_or_nothing', function (): void {
+    $event = Scenarios::event(capacity: 10);
+    $user = User::factory()->create();
+    $gone = User::factory()->create();
+    $rsvp = Events::for($event)->rsvp($user)->going();
+    $orphan = Events::for($event)->rsvp($gone)->going();
+    $code = (string) $rsvp->checkInCode();
+    $orphanCode = (string) $orphan->checkInCode();
+
+    // The account is soft-deleted: its RSVP keeps its seat, so its ticket still checks in.
+    $user->delete();
+    Scenarios::minutesBeforeStart($event, 30);
+    $result = Events::for($event)->by($event->organizer)->checkIn($code);
+
+    expect($result->firstCheckIn)->toBeTrue()
+        ->and($result->attendee->is($user))->toBeTrue()
+        ->and($rsvp->fresh()?->checked_in_at)->not->toBeNull();
+
+    // A row that is gone altogether: refused, and nothing is written.
+    DB::table($gone->getTable())->where('id', $gone->getKey())->delete();
+    expect(fn () => Events::for($event)->by($event->organizer)->checkIn($orphanCode))->toThrow(RsvpNotFoundException::class)
+        ->and($orphan->fresh()?->checked_in_at)->toBeNull();
+});
