@@ -6,6 +6,10 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 
 ## Unreleased
 
+### Changed
+
+- Documentation: the Composer description says ticket types.
+
 ## 1.1.0 - 2026-10-20
 
 ### Added

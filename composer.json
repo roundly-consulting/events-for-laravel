@@ -1,6 +1,6 @@
 {
     "name": "roundly-consulting/events-for-laravel",
-    "description": "Real-world events for any Eloquent app: reusable venues with near-me search, ticket tiers priced in Money, RSVPs with a race-free waitlist, QR check-in, co-hosts and invite-only events, iCalendar feeds and schema.org JSON-LD.",
+    "description": "Real-world events for any Eloquent app: reusable venues with near-me search, ticket types priced in Money, RSVPs with a race-free waitlist, QR check-in, co-hosts and invite-only events, iCalendar feeds and schema.org JSON-LD.",
     "keywords": [
         "roundly-consulting",
         "laravel",
