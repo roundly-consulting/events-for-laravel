@@ -78,3 +78,18 @@ test('a_waitlisted_repeat_after_the_sale_keeps_the_place', function (): void {
         ->and($again->waitlistPosition())->toBe(1)
         ->and($again->waitlisted_at?->toIso8601String())->toBe($waiting->waitlisted_at?->toIso8601String());
 });
+
+test('a_repeated_going_answer_saves_a_changed_note', function (): void {
+    $event = Scenarios::event(capacity: 1);
+    $attendee = User::factory()->create();
+    $waiting = User::factory()->create();
+
+    Events::for($event)->rsvp($attendee)->going(note: 'Vegan');
+    $rsvp = Events::for($event)->rsvp($attendee)->going(note: 'Vegan, no nuts');
+    Events::for($event)->rsvp($waiting)->going(note: 'Wheelchair');
+    $queued = Events::for($event)->rsvp($waiting)->going(note: 'Wheelchair, two seats');
+
+    expect($rsvp->fresh()?->note)->toBe('Vegan, no nuts')
+        ->and($queued->status)->toBe(RsvpStatus::Waitlisted)
+        ->and($queued->fresh()?->note)->toBe('Wheelchair, two seats');
+});

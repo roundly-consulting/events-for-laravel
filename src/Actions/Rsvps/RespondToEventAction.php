@@ -113,6 +113,8 @@ final readonly class RespondToEventAction
 
         if ($current === RsvpStatus::Going || $current === RsvpStatus::Held) {
             if ($tierId === $currentTier && $party === $currentParty) {
+                $this->saveNote($rsvp);
+
                 return;
             }
 
@@ -132,9 +134,9 @@ final readonly class RespondToEventAction
         }
 
         if ($current === RsvpStatus::Waitlisted && $tierId === $currentTier) {
-            if ($party !== $currentParty) {
-                $this->seats->execute($book, $rsvp, RsvpStatus::Waitlisted, $request->guests, $tierId, $request->actor, answer: true);
-            }
+            $party !== $currentParty
+                ? $this->seats->execute($book, $rsvp, RsvpStatus::Waitlisted, $request->guests, $tierId, $request->actor, answer: true)
+                : $this->saveNote($rsvp);
 
             return;
         }
@@ -157,9 +159,7 @@ final readonly class RespondToEventAction
         $current = $rsvp->exists ? $rsvp->status : null;
 
         if ($current === $to) {
-            if ($rsvp->isDirty()) {
-                $rsvp->save();
-            }
+            $this->saveNote($rsvp);
 
             return;
         }
@@ -169,6 +169,16 @@ final readonly class RespondToEventAction
         }
 
         $this->seats->execute($book, $rsvp, $to, $rsvp->exists ? $rsvp->guests : 0, $rsvp->tier_id === null ? null : (int) $rsvp->tier_id, $actor, answer: true);
+    }
+
+    /**
+     * A repeated answer changes no seat, but may carry a new note.
+     */
+    private function saveNote(Rsvp $rsvp): void
+    {
+        if ($rsvp->isDirty()) {
+            $rsvp->save();
+        }
     }
 
     private function seatStatus(?AdmissionTier $tier): RsvpStatus
