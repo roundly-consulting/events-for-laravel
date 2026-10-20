@@ -11,10 +11,13 @@ use RoundlyConsulting\Events\Http\Requests\ReorderTiersRequest;
 use RoundlyConsulting\Events\Http\Requests\TierRequest;
 use RoundlyConsulting\Events\Http\Resources\AdmissionTierResource;
 use RoundlyConsulting\Events\Models\AdmissionTier;
+use RoundlyConsulting\Events\Models\Event;
 use RoundlyConsulting\Events\Support\EventManagers;
+use RoundlyConsulting\Events\Support\EventModels;
 
 /**
- * Ticket types. Hidden ones are listed for managers only; a tier id of another event is a 404.
+ * Ticket types. Hidden ones are listed for managers only; a tier id of another event is a 404. A
+ * path segment is the tier's key (an all-digit one too), else a numeric one is its id.
  *
  * @internal
  */
@@ -42,14 +45,15 @@ final class TierController extends Controller
     public function update(TierRequest $request, string $event, string $tier): JsonResponse
     {
         $model = $this->event($request, $event);
-        $updated = $this->handle($request, $model)->tiers()->update(self::tierKey($tier), $request->toUpdate());
+        $updated = $this->handle($request, $model)->tiers()->update(self::tierKey($model, $tier), $request->toUpdate());
 
         return new JsonResponse(['data' => (new AdmissionTierResource($updated->setRelation('event', $model)))->forManager()->resolve($request)]);
     }
 
     public function destroy(Request $request, string $event, string $tier): Response
     {
-        $this->handle($request, $this->event($request, $event))->tiers()->remove(self::tierKey($tier));
+        $model = $this->event($request, $event);
+        $this->handle($request, $model)->tiers()->remove(self::tierKey($model, $tier));
 
         return new Response(status: 204);
     }
@@ -62,10 +66,17 @@ final class TierController extends Controller
     }
 
     /**
-     * A numeric segment is an id, anything else the tier's key.
+     * The tier's key — also an all-digit one, when one of the event's ticket types has it — else,
+     * for a number, its id. Every ticket type stays reachable by its key.
      */
-    private static function tierKey(string $tier): int|string
+    private static function tierKey(Event $event, string $tier): int|string
     {
-        return ctype_digit($tier) && strlen($tier) <= 18 ? (int) $tier : $tier;
+        if (! ctype_digit($tier) || strlen($tier) > 18) {
+            return $tier;
+        }
+
+        $keyed = EventModels::tier()::query()->where('event_id', $event->getKey())->where('key', $tier)->exists();
+
+        return $keyed ? $tier : (int) $tier;
     }
 }

@@ -197,3 +197,28 @@ test('a_price_too_precise_for_its_currency_is_a_422', function (string $price, s
     'three decimals in EUR' => ['15.999', 'EUR'],
     'any decimal in JPY' => ['15.5', 'JPY'],
 ]);
+
+test('an_all_digit_tier_key_is_addressable_or_refused', function (): void {
+    $event = Scenarios::event(organizer: $this->organizer);
+    $floor = Events::for($event)->tiers()->add('Floor', key: 'floor');
+    // A key that reads like another ticket type's id, and one derived from an all-digit name.
+    $balcony = Events::for($event)->tiers()->add('Balcony', key: (string) $floor->getKey());
+    $year = Events::for($event)->tiers()->add('2027');
+    $uri = "/api/events/{$event->uuid}/tiers";
+
+    expect($year->key)->toBe('2027');
+
+    // A segment one of the event's ticket types has as its key addresses that ticket type.
+    $this->actingAs($this->organizer)->patchJson("{$uri}/{$floor->getKey()}", ['capacity' => 9])->assertOk()
+        ->assertJsonPath('data.key', $balcony->key);
+    $this->actingAs($this->organizer)->patchJson("{$uri}/2027", ['capacity' => 5])->assertOk()->assertJsonPath('data.key', '2027');
+
+    expect($balcony->fresh()?->capacity)->toBe(9)
+        ->and($floor->fresh()?->capacity)->toBeNull()
+        ->and($year->fresh()?->capacity)->toBe(5);
+
+    // Any other number is still an id; every ticket type is reachable by its key.
+    $this->actingAs($this->organizer)->patchJson("{$uri}/{$year->getKey()}", ['capacity' => 6])->assertOk()->assertJsonPath('data.key', '2027');
+    $this->actingAs($this->organizer)->patchJson("{$uri}/floor", ['capacity' => 7])->assertOk()->assertJsonPath('data.key', 'floor');
+    $this->actingAs($this->organizer)->deleteJson("{$uri}/".($year->getKey() + 1000))->assertNotFound();
+});
