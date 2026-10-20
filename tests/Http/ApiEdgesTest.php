@@ -64,3 +64,26 @@ test('guest_list_filters_are_managers_only', function (): void {
     $this->actingAs($this->organizer)->getJson($uri.'?tier=press')->assertOk()->assertJsonCount(1, 'data');
     $this->actingAs($this->organizer)->getJson($uri.'?checked_in=1')->assertOk()->assertJsonCount(1, 'data');
 });
+
+test('show_counts_off_hides_tier_seats_left', function (): void {
+    $event = Scenarios::event(capacity: 100, organizer: $this->organizer);
+    Events::for($event)->update(new UpdateEventData(showCounts: false));
+    Events::for($event)->tiers()->add('General', capacity: 100, key: 'general');
+    foreach (range(1, 3) as $ignored) {
+        Events::for($event)->rsvp(User::factory()->create())->going(tier: 'general');
+    }
+
+    $stranger = $this->actingAs(User::factory()->create())->getJson("/api/events/{$event->uuid}")->assertOk();
+    expect($stranger->json('data.counts'))->toBeNull()
+        ->and($stranger->json('data.tiers.0.seats_left'))->toBeNull()
+        ->and($stranger->json('data.tiers.0.capacity'))->toBe(100);
+
+    $tiers = $this->getJson("/api/events/{$event->uuid}/tiers")->assertOk();
+    expect($tiers->json('data.0.seats_left'))->toBeNull();
+
+    $managed = $this->actingAs($this->organizer)->getJson("/api/events/{$event->uuid}")->assertOk();
+    expect($managed->json('data.tiers.0.seats_left'))->toBe(97);
+
+    Events::for($event)->update(new UpdateEventData(showCounts: true));
+    expect($this->actingAs(User::factory()->create())->getJson("/api/events/{$event->uuid}")->json('data.tiers.0.seats_left'))->toBe(97);
+});

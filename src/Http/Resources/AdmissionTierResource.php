@@ -41,7 +41,8 @@ final class AdmissionTierResource extends JsonResource
             'price' => MoneyResource::from($tier->price)?->resolve($request),
             'free' => $tier->isFree(),
             'capacity' => $tier->capacity,
-            'seats_left' => $tier->seatsLeft(),
+            // Capacity minus seats left is the head count: shown as the event's counts are.
+            'seats_left' => $this->forManager || $tier->event->show_counts ? $tier->seatsLeft() : null,
             'on_sale' => $tier->isOnSale(),
             'sale_starts_at' => $tier->sale_starts_at?->setTimezone($timezone)->toIso8601String(),
             'sale_ends_at' => $tier->sale_ends_at?->setTimezone($timezone)->toIso8601String(),
