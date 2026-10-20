@@ -18,6 +18,7 @@ use RoundlyConsulting\Events\Http\Resources\References;
 use RoundlyConsulting\Events\Http\Resources\RsvpResource;
 use RoundlyConsulting\Events\Models\Event;
 use RoundlyConsulting\Events\Models\Rsvp;
+use RoundlyConsulting\Events\Support\EventAuthorization;
 use RoundlyConsulting\Events\Support\EventManagers;
 use RoundlyConsulting\Events\Support\EventTransaction;
 
@@ -76,6 +77,10 @@ final class AttendeeController extends Controller
     public function update(AttendeeRequest $request, string $event, string $rsvp): JsonResponse
     {
         $model = $this->event($request, $event);
+        // The policy first, whatever the body holds: an empty one changes nothing, but would
+        // still answer with the managers' view of the RSVP.
+        EventAuthorization::authorize($this->actor($request), 'manageAttendees', $model);
+        $request->assertChangesSomething();
         $record = $this->rsvp($model, $rsvp);
         $attendees = $this->handle($request, $model)->attendees();
 

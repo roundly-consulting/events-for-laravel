@@ -228,3 +228,21 @@ test('attendee_update_is_all_or_nothing', function (): void {
     $this->actingAs($this->organizer)->patchJson("/api/events/{$this->event->uuid}/attendees/{$rsvp->getKey()}", ['tier' => 'seated', 'guests' => 1])
         ->assertOk()->assertJsonPath('data.guests', 1);
 });
+
+test('an_empty_attendee_patch_still_needs_manage_attendees', function (): void {
+    $rsvp = Events::for($this->event)->rsvp($this->attendee)->going(note: 'Wheelchair access please');
+    $interested = Events::for($this->event)->rsvp(User::factory()->create())->interested();
+    $stranger = User::factory()->create();
+    $uri = "/api/events/{$this->event->uuid}/attendees";
+
+    // A body with nothing to change is still a manager's write: no RSVP view for anyone else.
+    foreach ([$rsvp, $interested] as $record) {
+        $this->actingAs($stranger)->patchJson("{$uri}/{$record->getKey()}", [])->assertForbidden()
+            ->assertJsonPath('code', 'forbidden')->assertJsonMissingPath('data');
+    }
+
+    // A manager is told what is missing.
+    $this->actingAs($this->organizer)->patchJson("{$uri}/{$rsvp->getKey()}", [])->assertStatus(422)
+        ->assertJsonPath('code', 'validation_failed')
+        ->assertJsonStructure(['message', 'code', 'errors' => ['tier', 'guests']]);
+});
