@@ -366,3 +366,47 @@ test('a check-in is undone only once', function (): void {
         ->and($rsvp->fresh()?->status)->toBe(RsvpStatus::Going);
     EventBus::assertDispatchedTimes(CheckInUndone::class, 1);
 });
+
+test('removing_a_checked_in_attendee_clears_the_check_in', function (): void {
+    EventBus::fake([AttendeeCheckedIn::class]);
+    $organizer = User::factory()->create();
+    $event = Scenarios::event(capacity: 5, organizer: $organizer);
+    $user = User::factory()->create();
+    $rsvp = Events::for($event)->rsvp($user)->going();
+    atTheDoor($event);
+    Events::for($event)->checkIn((string) $rsvp->checkInCode());
+
+    // A manager takes them off the list: a checked-in RSVP is never one that left.
+    Events::for($event)->by($organizer)->attendees()->remove($user);
+    $removed = $user->rsvpFor($event);
+
+    expect($removed?->status)->toBe(RsvpStatus::NotGoing)
+        ->and($removed?->checked_in_at)->toBeNull()
+        ->and($removed?->checked_in_guests)->toBeNull()
+        ->and($removed?->check_in_method)->toBeNull()
+        ->and($removed?->checked_in_by_type)->toBeNull()
+        ->and(Events::for($event)->attendees()->checkedIn())->toHaveCount(0);
+
+    // Put back on the list: a fresh code that checks in for the first time, and they may leave.
+    $readded = Events::for($event)->attendees()->add($user);
+    $scan = Events::for($event)->checkIn((string) $readded->checkInCode());
+
+    expect($scan->firstCheckIn)->toBeTrue();
+    EventBus::assertDispatchedTimes(AttendeeCheckedIn::class, 2);
+
+    Events::for($event)->attendees()->undoCheckIn($user);
+    expect(Events::for($event)->rsvp($user)->notGoing()->status)->toBe(RsvpStatus::NotGoing);
+});
+
+test('the_checked_in_list_holds_going_rsvps_only', function (): void {
+    $event = Scenarios::event(capacity: 5);
+    $user = User::factory()->create();
+    $rsvp = Events::for($event)->rsvp($user)->going();
+    atTheDoor($event);
+    Events::for($event)->checkIn((string) $rsvp->checkInCode());
+
+    // A row left checked in by an earlier release (or written by hand) never counts as through the door.
+    Rsvp::query()->whereKey($rsvp->getKey())->update(['status' => RsvpStatus::NotGoing->value]);
+
+    expect(Events::for($event)->attendees()->checkedIn())->toHaveCount(0);
+});

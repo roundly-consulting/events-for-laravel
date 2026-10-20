@@ -26,7 +26,8 @@ use RoundlyConsulting\Events\Support\SeatBook;
  * `RsvpChanged` and the status events (after commit). `answer` marks the attendee's own answer
  * (`responded_at`); `promotion` a move off the waitlist; `paid` a seat a payment confirmed —
  * any other way into going (a free ticket type, a comp seat) drops the old hold's checkout, so
- * its webhook is not found (refund) and leaving never reports a payment.
+ * its webhook is not found (refund) and leaving never reports a payment. Leaving going clears the
+ * check-in record: a checked-in RSVP is never one that left.
  *
  * @internal
  */
@@ -59,6 +60,10 @@ final readonly class ApplySeatChangesAction
         $rsvp->guests = $guests;
         $rsvp->tier_id = $tierId;
         $now = Clock::now();
+
+        if ($from === RsvpStatus::Going && $to !== RsvpStatus::Going) {
+            $this->clearCheckIn($rsvp);
+        }
 
         match ($to) {
             RsvpStatus::Going => $this->going($rsvp, $from, $paid),
@@ -158,6 +163,15 @@ final readonly class ApplySeatChangesAction
         $this->revokeCode($rsvp);
         $rsvp->held_until = null;
         $rsvp->waitlisted_at = null;
+    }
+
+    private function clearCheckIn(Rsvp $rsvp): void
+    {
+        $rsvp->checked_in_at = null;
+        $rsvp->checked_in_guests = null;
+        $rsvp->check_in_method = null;
+        $rsvp->checked_in_by_type = null;
+        $rsvp->checked_in_by_id = null;
     }
 
     private function revokeCode(Rsvp $rsvp): void

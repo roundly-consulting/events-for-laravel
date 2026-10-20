@@ -15,6 +15,7 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 - `PATCH /events/{event}/attendees/{rsvp}` checks `manageAttendees` before anything else: an empty body no longer returns the managers' view of the RSVP to any signed-in user (it is a 403, and a manager gets a 422 naming the missing `tier` / `guests`).
 - A checkout requested for a hold that was refreshed during the collector call (a new party size or ticket type, so a new amount) is discarded and reported with `RsvpPaymentRequestDiscarded` instead of being attached to the new hold — paying the old, smaller checkout no longer confirms the larger party.
 - Hosts that use immutable dates (`Date::use(CarbonImmutable::class)`) can save the package's models again: their UTC timestamps no longer throw a `TypeError`.
+- Leaving going (a manager's `attendees()->remove()`, any other status change) clears the RSVP's check-in record, and `attendees()->checkedIn()` lists going RSVPs only: a removed attendee no longer shows as checked in, and when put back on the list their new code checks in for the first time (`AttendeeCheckedIn`) and they may decline again.
 
 ## 1.0.0 - 2026-10-20
 

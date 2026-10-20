@@ -247,3 +247,19 @@ test('an_empty_attendee_patch_still_needs_manage_attendees', function (): void {
         ->assertJsonPath('code', 'validation_failed')
         ->assertJsonStructure(['message', 'code', 'errors' => ['tier', 'guests']]);
 });
+
+test('a_removed_attendee_is_no_longer_listed_as_checked_in', function (): void {
+    $rsvp = Events::for($this->event)->rsvp($this->attendee)->going();
+    Scenarios::minutesBeforeStart($this->event, 30);
+    Events::for($this->event)->checkIn((string) $rsvp->checkInCode());
+    $uri = "/api/events/{$this->event->uuid}/attendees";
+
+    $this->actingAs($this->organizer)->deleteJson("{$uri}/{$rsvp->getKey()}")->assertNoContent();
+    $this->actingAs($this->organizer)->getJson($uri.'?status=not_going&checked_in=1')->assertOk()->assertJsonCount(0, 'data');
+
+    // Put back on the list: going, not checked in.
+    Events::for($this->event)->attendees()->add($this->attendee);
+    $this->actingAs($this->organizer)->getJson($uri.'?checked_in=1')->assertOk()->assertJsonCount(0, 'data');
+    $this->actingAs($this->organizer)->getJson($uri.'?checked_in=0')->assertOk()->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.checked_in_at', null);
+});

@@ -147,7 +147,7 @@ final readonly class EventAttendees
     }
 
     /**
-     * Who is through the door (`checkIn` with an actor).
+     * Who is through the door (`checkIn` with an actor): going RSVPs with a check-in.
      *
      * @return Collection<int, Rsvp>
      */
@@ -157,6 +157,7 @@ final readonly class EventAttendees
 
         return EventModels::rsvp()::query()
             ->where('event_id', $this->handle->event()->getKey())
+            ->where('status', RsvpStatus::Going->value)
             ->whereNotNull('checked_in_at')
             ->with('attendee')
             ->orderBy('checked_in_at')
