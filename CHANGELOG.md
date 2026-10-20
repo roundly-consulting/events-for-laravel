@@ -6,8 +6,13 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 
 ## Unreleased
 
+### Added
+
+- Migration `0008_store_event_instants_as_datetime` (tag `events-migrations`): on MySQL and MariaDB every instant column of the package's seven tables — the schedule, the RSVP window, sale windows, holds, check-ins, reminders, the status stamps and `created_at` / `updated_at` / `deleted_at` — becomes `DATETIME`. On PostgreSQL and SQLite both column types are the same and it changes nothing. `events:doctor` warns while the events table still stores `TIMESTAMP`.
+
 ### Changed
 
+- **Upgrading from 1.0:** republish the migrations and migrate — `php artisan vendor:publish --tag=events-migrations` (only the new `0008` file is added) and `php artisan migrate`. On MySQL it rebuilds the package's tables; run it with the same database connection settings as your app (the stored values convert in that session's time zone, which wrote them, so they come through unchanged). If you published `routes/events.php`, add `RoundlyConsulting\Events\Http\Middleware\UseConfiguredGuard` to its outer group's middleware (see Fixed).
 - An attendee's own paid answer asks for its checkout through the manager (`Events::rsvps()->requestPayment()`, with no actor, so no policy check), like the queued request after a promotion: `Events::fake()` now records it, so `assertPaymentRequested()` passes and `assertNoPaymentRequested()` fails after a paid RSVP. The checkout itself is unchanged.
 - A manager's `confirm()` without a payment reference now means "paid another way" (cash at the door): the hold's online checkout, its URL and amount are dropped, so a later online payment of that checkout is not found (refund it) and leaving reports `wasPaid: false`. With a reference (`confirm($rsvp, 'terminal-42')`) the seat counts as paid, as before.
 - A going or held attendee who adds guests may no longer take free seats a waitlisted party of that ticket type would fit (`EventFullException`, or `TierSoldOutException` on a ticket type): the queue comes first, as it does for newcomers. It shows when automatic promotion is off or after `waitlist.stop_promoting_before`; a manager's `changeGuests()` is unchanged.
@@ -15,6 +20,7 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 
 ### Fixed
 
+- On MySQL and MariaDB (after migrating `0008`), an event can start after 2038-01-19 — a `startsAt('2040-…')` was an SQL error and an HTTP 500 — and no write fails any more when its UTC value falls into the connection time zone's spring-forward gap (with a DST zone such as `Europe/Bratislava` as the MySQL session time zone, every save in that hour of the year failed).
 - `PATCH /events/{event}/attendees/{rsvp}` checks `manageAttendees` before anything else: an empty body no longer returns the managers' view of the RSVP to any signed-in user (it is a 403, and a manager gets a 422 naming the missing `tier` / `guests`).
 - A checkout requested for a hold that was refreshed during the collector call (a new party size or ticket type, so a new amount) is discarded and reported with `RsvpPaymentRequestDiscarded` instead of being attached to the new hold — paying the old, smaller checkout no longer confirms the larger party.
 - Hosts that use immutable dates (`Date::use(CarbonImmutable::class)`) can save the package's models again: their UTC timestamps no longer throw a `TypeError`.

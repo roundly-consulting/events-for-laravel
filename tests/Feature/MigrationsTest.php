@@ -31,14 +31,15 @@ it('never auto-loads its migrations — the host publishes them', function (): v
     expect(EventsServiceProvider::class)->toNotAutoLoadMigrations();
 });
 
+// Eight: the seven create migrations of 1.0 and 0008, which stores every instant as DATETIME on MySQL.
 it('publishes its migrations timestamp-injected into the host', function (): void {
-    expect(EventsServiceProvider::class)->toPublishMigrationsTimestamped('events-migrations', 7);
+    expect(EventsServiceProvider::class)->toPublishMigrationsTimestamped('events-migrations', 8);
 });
 
 it('migrates forward only — no migration defines down()', function () use ($migrations): void {
     $files = glob($migrations.'/*.php') ?: [];
 
-    expect($files)->toHaveCount(7);
+    expect($files)->toHaveCount(8);
 
     foreach ($files as $file) {
         expect((string) file_get_contents($file))->not->toContain('function down(');
@@ -46,7 +47,7 @@ it('migrates forward only — no migration defines down()', function () use ($mi
 });
 
 it('applies its migrations on postgres', function () use ($migrations): void {
-    expect($migrations)->toApplyOnConnection('pgsql', migrations: 7);
+    expect($migrations)->toApplyOnConnection('pgsql', migrations: 8);
 })->skip(fn (): bool => ! test()->connectionAvailable('pgsql'), 'no postgres connection available')->group('pgsql');
 
 it('rejects a child-before-parent order on postgres', function () use ($migrations): void {
@@ -54,7 +55,7 @@ it('rejects a child-before-parent order on postgres', function () use ($migratio
 })->skip(fn (): bool => ! test()->connectionAvailable('pgsql'), 'no postgres connection available')->group('pgsql');
 
 it('applies its migrations on mysql', function () use ($migrations): void {
-    expect($migrations)->toApplyOnConnection('mysql', migrations: 7);
+    expect($migrations)->toApplyOnConnection('mysql', migrations: 8);
 })->skip(fn (): bool => ! test()->connectionAvailable('mysql'), 'no mysql connection available')->group('mysql');
 
 it('rejects a child-before-parent order on mysql', function () use ($migrations): void {

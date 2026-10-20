@@ -41,6 +41,7 @@ final readonly class Doctor
             ...$this->lifecycle(),
             ...$this->tagTypes(),
             ...$this->tables(),
+            ...$this->instants(),
             ...$this->distance(),
             ...$this->classes(),
             ...$this->warnings(),
@@ -151,6 +152,29 @@ final readonly class Doctor
         }
 
         return $findings;
+    }
+
+    /**
+     * On MySQL / MariaDB the instants are DATETIME columns since migration 0008: TIMESTAMP ones
+     * (1.0's) refuse dates after 2038-01-19 and values in the session zone's DST gap.
+     *
+     * @return list<DoctorFinding>
+     */
+    private function instants(): array
+    {
+        $table = EventsConfig::table('events');
+
+        if (! in_array(DB::connection()->getDriverName(), ['mysql', 'mariadb'], true) || ! Schema::hasTable($table)) {
+            return [];
+        }
+
+        foreach (Schema::getColumns($table) as $column) {
+            if ($column['name'] === 'starts_at' && $column['type_name'] === 'timestamp') {
+                return [self::warning('instants', sprintf('[%s] stores its times as TIMESTAMP: dates after 2038-01-19 and times in your MySQL time zone\'s DST gap fail to save. Publish events-migrations and migrate (0008 switches them to DATETIME).', $table))];
+            }
+        }
+
+        return [];
     }
 
     /**
