@@ -83,6 +83,10 @@ final readonly class UpdateTierAction
                 $tier->hidden = $data->hidden;
             }
 
+            if (! $data->position instanceof NotGiven) {
+                $tier->position = TierInput::position($data->position);
+            }
+
             $changed = array_keys($tier->getDirty());
 
             if ($changed !== []) {

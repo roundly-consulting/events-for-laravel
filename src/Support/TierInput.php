@@ -113,6 +113,15 @@ final class TierInput
             : Config::string('money.default_currency', 'EUR');
     }
 
+    public static function position(int $position): int
+    {
+        if ($position < 0) {
+            throw InvalidTierException::negativePosition();
+        }
+
+        return $position;
+    }
+
     public static function capacity(?int $capacity): ?int
     {
         if ($capacity !== null && $capacity < 0) {

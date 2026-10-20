@@ -147,6 +147,16 @@ test('a_partial_address_patch_keeps_the_other_fields', function (): void {
     expect([$venue->fresh()?->street, $venue->fresh()?->city])->toBe([null, 'Košice']);
 });
 
+test('a_tier_position_patch_is_applied', function (): void {
+    $event = Scenarios::event(organizer: $this->organizer);
+    $tier = Events::for($event)->tiers()->add('General', key: 'general');
+
+    $this->actingAs($this->organizer)->patchJson("/api/events/{$event->uuid}/tiers/general", ['position' => 7])->assertOk()
+        ->assertJsonPath('data.position', 7);
+    expect($tier->fresh()?->position)->toBe(7)
+        ->and(fn () => Events::for($event)->tiers()->update('general', new UpdateTierData(position: -1)))->toThrow(InvalidTierException::class);
+});
+
 test('a_venue_patch_never_ignores_owner_shared_or_geocode', function (): void {
     $team = Team::factory()->create();
     $team->members()->attach($this->organizer);

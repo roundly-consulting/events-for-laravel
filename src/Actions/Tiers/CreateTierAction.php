@@ -56,7 +56,7 @@ final readonly class CreateTierAction
                 'min_party' => $data->minParty,
                 'max_party' => $data->maxParty,
                 'hidden' => $data->hidden,
-                'position' => $data->position ?? ((int) $model::query()->withTrashed()->where('event_id', $event->getKey())->max('position') + 1),
+                'position' => $data->position !== null ? TierInput::position($data->position) : ((int) $model::query()->withTrashed()->where('event_id', $event->getKey())->max('position') + 1),
             ]);
 
             try {

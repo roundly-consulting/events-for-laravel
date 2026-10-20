@@ -55,6 +55,7 @@ return [
     'tier_invalid_party_limits' => 'The party limits must be at least 1, and the minimum may not exceed the maximum.',
     'tier_invalid_sale_window' => 'The sale must start before it ends.',
     'tier_negative_capacity' => 'The ticket type capacity may not be negative.',
+    'tier_negative_position' => 'The ticket type position may not be negative.',
     'tier_invalid_price' => 'The price may not be negative.',
     'tier_reorder_mismatch' => 'Reorder lists every ticket type of the event exactly once.',
 

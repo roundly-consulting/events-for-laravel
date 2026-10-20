@@ -49,6 +49,11 @@ final class InvalidTierException extends EventsException
         return self::make('invalid_tier', 422, [], 'tier_negative_capacity');
     }
 
+    public static function negativePosition(): self
+    {
+        return self::make('invalid_tier', 422, [], 'tier_negative_position');
+    }
+
     public static function invalidPrice(): self
     {
         return self::make('invalid_tier', 422, [], 'tier_invalid_price');

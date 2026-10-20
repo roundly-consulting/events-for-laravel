@@ -55,6 +55,7 @@ return [
     'tier_invalid_party_limits' => 'Limity skupiny musia byť aspoň 1 a minimum nesmie prevyšovať maximum.',
     'tier_invalid_sale_window' => 'Predaj sa musí začať skôr, ako sa skončí.',
     'tier_negative_capacity' => 'Kapacita typu vstupenky nesmie byť záporná.',
+    'tier_negative_position' => 'Poradie typu vstupenky nesmie byť záporné.',
     'tier_invalid_price' => 'Cena nesmie byť záporná.',
     'tier_reorder_mismatch' => 'Nové poradie musí obsahovať každý typ vstupenky podujatia práve raz.',
 

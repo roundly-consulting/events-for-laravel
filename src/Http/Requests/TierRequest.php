@@ -76,6 +76,7 @@ final class TierRequest extends EventsRequest
             maxParty: $given('max_party') ? ($data['max_party'] === null ? null : (int) $data['max_party']) : NotGiven::Value,
             hidden: $given('hidden') ? (bool) $data['hidden'] : NotGiven::Value,
             description: $given('description') ? $data['description'] : NotGiven::Value,
+            position: $given('position') ? (int) $data['position'] : NotGiven::Value,
         );
     }
 }

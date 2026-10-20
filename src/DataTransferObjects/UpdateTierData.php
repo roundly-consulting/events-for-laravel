@@ -30,5 +30,6 @@ final readonly class UpdateTierData
         public int|NotGiven|null $maxParty = NotGiven::Value,
         public bool|NotGiven $hidden = NotGiven::Value,
         public array|string|NotGiven|null $description = NotGiven::Value,
+        public int|NotGiven $position = NotGiven::Value,
     ) {}
 }
