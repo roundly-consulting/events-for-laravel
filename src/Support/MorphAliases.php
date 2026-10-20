@@ -56,6 +56,25 @@ final class MorphAliases
     }
 
     /**
+     * How a host model is named in a response: its `events.organizers` alias, else its
+     * `events.attendees` alias (organizers win a clash, as in {@see self::person()}) — the alias a
+     * body or an `alias:key` path takes back — or, for a class in neither map, its class basename.
+     * Never a class name.
+     */
+    public static function aliasOf(Model $model): string
+    {
+        foreach ([EventsConfig::organizers(), EventsConfig::attendees()] as $map) {
+            $alias = array_search($model::class, $map, true);
+
+            if (is_string($alias)) {
+                return $alias;
+            }
+        }
+
+        return class_basename($model);
+    }
+
+    /**
      * `alias:key` as one path or filter segment.
      *
      * @return array{0: string, 1: string}

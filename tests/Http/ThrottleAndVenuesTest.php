@@ -41,11 +41,12 @@ it('lists, creates, changes, geocodes and deletes venues', function (): void {
     Venue::factory()->create(['latitude' => 48.15, 'longitude' => 17.11]);
     Venue::factory()->create(['latitude' => 48.72, 'longitude' => 21.26]);
 
+    // The owner renders as its alias, the one the request named (was the basename until 1.1).
     $created = $this->actingAs($user)->postJson('/api/event-venues', [
         'name' => 'Blue Note', 'street' => 'Hlavná 1', 'city' => 'Bratislava', 'country' => 'SK',
         'coordinates' => ['latitude' => 48.1439, 'longitude' => 17.1097], 'timezone' => 'Europe/Bratislava',
         'owner' => ['type' => 'team', 'id' => $team->getKey()],
-    ])->assertCreated()->assertJsonPath('data.owner', ['id' => $team->getKey(), 'type' => 'Team'])->json('data');
+    ])->assertCreated()->assertJsonPath('data.owner', ['id' => $team->getKey(), 'type' => 'team'])->json('data');
 
     app('auth')->forgetGuards();
     $this->getJson('/api/event-venues')->assertOk()->assertJsonPath('total', 3);
@@ -112,7 +113,7 @@ test('api_venues_belong_to_their_creator_by_default', function (): void {
     $user = User::factory()->create();
 
     $created = $this->actingAs($user)->postJson('/api/event-venues', ['name' => 'My studio'])
-        ->assertCreated()->assertJsonPath('data.owner', ['id' => $user->getKey(), 'type' => 'User'])->json('data');
+        ->assertCreated()->assertJsonPath('data.owner', ['id' => $user->getKey(), 'type' => 'user'])->json('data');
 
     $this->actingAs($user)->getJson('/api/event-venues?mine=1')->assertOk()->assertJsonPath('total', 1);
     $this->actingAs($user)->patchJson("/api/event-venues/{$created['id']}", ['capacity' => 40])->assertOk()->assertJsonPath('data.capacity', 40);

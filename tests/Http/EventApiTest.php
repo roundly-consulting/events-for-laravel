@@ -46,7 +46,8 @@ it('creates and announces an event with a new venue, ticket types and tags', fun
         ->assertJsonPath('data.category.path', ['Music'])
         ->assertJsonPath('data.labels.0.slug', 'live')
         ->assertJsonPath('data.tiers.1.price.decimal', '15.00')
-        ->assertJsonPath('data.organizer', ['id' => $this->organizer->getKey(), 'type' => 'User'])
+        // The organizer's `events.organizers` alias, the one a body takes back (was the basename until 1.1).
+        ->assertJsonPath('data.organizer', ['id' => $this->organizer->getKey(), 'type' => 'user'])
         ->assertJsonPath('data.visibility', 'public')
         ->assertJsonPath('data.viewer.can.manage', true);
 
@@ -172,7 +173,7 @@ it('lets team organizers create through the reference', function (): void {
 
     $this->actingAs($this->organizer)->postJson('/api/events', [
         'title' => 'Meetup', 'starts_at' => '2027-02-12 18:00', 'organizer' => ['type' => 'team', 'id' => $team->getKey()],
-    ])->assertCreated()->assertJsonPath('data.organizer', ['id' => $team->getKey(), 'type' => 'Team']);
+    ])->assertCreated()->assertJsonPath('data.organizer', ['id' => $team->getKey(), 'type' => 'team']);
 
     $this->actingAs(User::factory()->create())->postJson('/api/events', [
         'title' => 'Meetup', 'starts_at' => '2027-02-12 18:00', 'organizer' => ['type' => 'team', 'id' => $team->getKey()],

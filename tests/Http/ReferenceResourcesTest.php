@@ -5,12 +5,20 @@ declare(strict_types=1);
 use Illuminate\Http\Resources\Json\JsonResource;
 use RoundlyConsulting\Events\DataTransferObjects\UpdateEventData;
 use RoundlyConsulting\Events\Facades\Events;
+use RoundlyConsulting\Events\Http\Resources\EventActorResource;
+use RoundlyConsulting\Events\Http\Resources\EventAttendeeResource;
+use RoundlyConsulting\Events\Http\Resources\EventHostResource;
+use RoundlyConsulting\Events\Http\Resources\EventInviteeResource;
+use RoundlyConsulting\Events\Http\Resources\EventOrganizerResource;
+use RoundlyConsulting\Events\Http\Resources\VenueOwnerResource;
 use RoundlyConsulting\Events\Models\Event;
 use RoundlyConsulting\Events\Models\Venue;
 use RoundlyConsulting\Events\Support\EventsConfig;
 use RoundlyConsulting\Events\Tests\Fixtures\HostPersonResource;
+use RoundlyConsulting\Events\Tests\Fixtures\Models\Guest;
 use RoundlyConsulting\Events\Tests\Fixtures\Models\Team;
 use RoundlyConsulting\Events\Tests\Fixtures\Models\User;
+use RoundlyConsulting\Events\Tests\Fixtures\Models\UuidUser;
 use RoundlyConsulting\Events\Tests\Support\Scenarios;
 use RoundlyConsulting\PackageToolkit\Exceptions\InvalidConfigurationException;
 
@@ -74,14 +82,41 @@ test('resources_leak_no_class_names', function (): void {
     expect($bodies)->not->toContain('\\')
         ->and($bodies)->not->toContain('Fixtures')
         ->and($bodies)->not->toContain('_type')
-        ->and($bodies)->toContain('"type":"User"')
-        ->and($bodies)->toContain('"type":"Team"');
+        // The configured aliases (was the basename until 1.1).
+        ->and($bodies)->toContain('"type":"user"')
+        ->and($bodies)->toContain('"type":"team"');
 
     foreach (referenceRoles() as $role => [$path, $json]) {
         $rendered = $this->actingAs($organizer)->getJson("/api/events/{$event->uuid}{$path}")->json($json);
         expect($rendered)->toHaveKeys(['id', 'type'], $role)
-            ->and($rendered['type'])->toBeIn(['User', 'Team']);
+            ->and($rendered['type'])->toBeIn(['user', 'team']);
     }
+});
+
+test('reference_resources_render_the_configured_alias', function (): void {
+    [$organizer, $event] = referenceScenario();
+
+    // The alias request bodies and `alias:key` paths take — what a client reads, it can send back.
+    foreach (referenceRoles() as $role => [$path, $json]) {
+        expect($this->actingAs($organizer)->getJson("/api/events/{$event->uuid}{$path}")->json($json.'.type'))
+            ->toBe($role === 'venue_owner' ? 'team' : 'user', $role);
+    }
+
+    $host = $this->actingAs($organizer)->getJson("/api/events/{$event->uuid}/hosts")->json('data.0');
+    $this->actingAs($organizer)->deleteJson("/api/events/{$event->uuid}/hosts/{$host['type']}:{$host['id']}")->assertNoContent();
+
+    // Every default resource: an attendees-only class takes its alias, a class in neither map its basename.
+    $guest = Guest::factory()->create();
+    $unmapped = new UuidUser(['id' => '0192f0c4-7c2a-7000-8000-000000000001']);
+
+    foreach ([EventOrganizerResource::class, EventHostResource::class, EventAttendeeResource::class, EventInviteeResource::class, EventActorResource::class, VenueOwnerResource::class] as $resource) {
+        expect((new $resource($guest))->resolve(request())['type'])->toBe('guest', $resource)
+            ->and((new $resource($unmapped))->resolve(request())['type'])->toBe('UuidUser', $resource);
+    }
+
+    // A class listed in both maps under different aliases: the organizers' wins, as in a path.
+    config()->set('events.attendees', ['member' => User::class, 'guest' => Guest::class]);
+    expect((new EventAttendeeResource($organizer))->resolve(request())['type'])->toBe('user');
 });
 
 foreach (array_keys(referenceRoles()) as $role) {

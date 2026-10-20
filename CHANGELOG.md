@@ -6,6 +6,10 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 
 ## Unreleased
 
+### Changed
+
+- The default reference resources (`events.resources.*`) render a host model's `type` as its `events.organizers` / `events.attendees` alias (`user`), the one request bodies and `alias:key` paths take, instead of the class basename (`User`): a client can send back what it reads. A class in neither map still renders its basename; organizers win when a class has two aliases. Hosts that compared `type` with the basename should compare with the alias (or point `events.resources.*` at their own resource).
+
 ### Fixed
 
 - `PATCH /events/{event}/attendees/{rsvp}` checks `manageAttendees` before anything else: an empty body no longer returns the managers' view of the RSVP to any signed-in user (it is a 403, and a manager gets a 422 naming the missing `tier` / `guests`).

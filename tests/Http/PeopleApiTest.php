@@ -67,7 +67,8 @@ it('lists attendees as the guest list allows', function (): void {
     $this->actingAs($this->attendee)->getJson($uri)->assertForbidden();
 
     $managers = $this->actingAs($this->organizer)->getJson($uri)->assertOk()->assertJsonCount(1, 'data');
-    expect($managers->json('data.0.attendee'))->toBe(['id' => $this->attendee->getKey(), 'type' => 'User'])
+    // References render the configured alias, the one bodies and paths take (was the basename until 1.1).
+    expect($managers->json('data.0.attendee'))->toBe(['id' => $this->attendee->getKey(), 'type' => 'user'])
         ->and(array_key_exists('check_in_code', $managers->json('data.0')))->toBeFalse();
     $this->actingAs($this->organizer)->getJson($uri.'?status=interested')->assertOk()->assertJsonCount(1, 'data');
 
@@ -91,7 +92,7 @@ it('lets managers add, change, remove and check in attendees', function (): void
     $as->postJson("{$uri}/{$rsvp['id']}/check-in", ['guests' => 1])->assertOk()
         ->assertJsonPath('data.first_check_in', true)
         ->assertJsonPath('data.method', 'manual')
-        ->assertJsonPath('data.attendee.type', 'User');
+        ->assertJsonPath('data.attendee.type', 'user');
     $as->deleteJson("{$uri}/{$rsvp['id']}/check-in")->assertOk()->assertJsonPath('data.checked_in_at', null);
     $as->deleteJson("{$uri}/{$rsvp['id']}")->assertNoContent();
 
@@ -142,7 +143,7 @@ it('manages co-hosts by reference', function (): void {
     $host = User::factory()->create();
     $uri = "/api/events/{$this->event->uuid}/hosts";
 
-    $this->actingAs($this->organizer)->postJson($uri, ['person' => ['type' => 'user', 'id' => $host->getKey()]])->assertCreated()->assertJsonPath('data.type', 'User');
+    $this->actingAs($this->organizer)->postJson($uri, ['person' => ['type' => 'user', 'id' => $host->getKey()]])->assertCreated()->assertJsonPath('data.type', 'user');
     $this->getJson($uri)->assertOk()->assertJsonPath('data.0.id', $host->getKey());
     // A co-host may not add co-hosts.
     $this->actingAs($host)->postJson($uri, ['person' => ['type' => 'user', 'id' => $this->attendee->getKey()]])->assertForbidden();
@@ -158,7 +159,7 @@ it('invites and answers invitations from the link', function (): void {
     $uri = "/api/events/{$this->event->uuid}/invitations";
 
     $this->actingAs($this->organizer)->postJson($uri, ['person' => ['type' => 'user', 'id' => $invitee->getKey()], 'message' => 'Come!'])->assertCreated()
-        ->assertJsonPath('data.status', 'pending')->assertJsonPath('data.invitee.type', 'User')->assertJsonMissingPath('data.token');
+        ->assertJsonPath('data.status', 'pending')->assertJsonPath('data.invitee.type', 'user')->assertJsonMissingPath('data.token');
     $this->actingAs($this->organizer)->getJson($uri)->assertOk()->assertJsonCount(1, 'data');
     $this->actingAs($invitee)->getJson($uri)->assertForbidden();
 

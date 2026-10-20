@@ -325,9 +325,10 @@ return [
     |--------------------------------------------------------------------------
     |
     | Every person or team the API mentions (organizer, co-host, attendee, invitee, an actor,
-    | a venue's owner) renders through its own resource, by default `{id, type}` with the
-    | class basename — never a class name. Point a key at your own JsonResource to add a name
-    | or an avatar; it receives the model.
+    | a venue's owner) renders through its own resource, by default `{id, type}` with its alias
+    | from `organizers` / `attendees` above (a class in neither: its basename) — never a class
+    | name. Point a key at your own JsonResource to add a name or an avatar; it receives the
+    | model.
     |
     */
 
