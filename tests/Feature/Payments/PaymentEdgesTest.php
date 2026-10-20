@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Event as EventBus;
 use RoundlyConsulting\Events\DataTransferObjects\UpdateEventData;
 use RoundlyConsulting\Events\Enums\RsvpStatus;
 use RoundlyConsulting\Events\Events\RsvpCancelled;
+use RoundlyConsulting\Events\Events\RsvpChanged;
 use RoundlyConsulting\Events\Exceptions\RsvpClosedException;
 use RoundlyConsulting\Events\Exceptions\RsvpNotFoundException;
 use RoundlyConsulting\Events\Facades\Events;
@@ -164,4 +165,34 @@ test('rsvps_by_actor_request_payment_checks_the_policy', function (): void {
     expect(fn () => Events::rsvps()->by(User::factory()->create())->requestPayment($held))->toThrow(AuthorizationException::class)
         ->and(Events::rsvps()->by($attendee)->requestPayment($held)?->reference)->toBe($held->payment_reference)
         ->and(Events::rsvps()->by($event->organizer)->requestPayment($held)?->reference)->toBe($held->payment_reference);
+});
+
+test('force_deleting_an_attendee_reports_a_paid_seat', function (): void {
+    $event = supporterEvent(capacity: 1);
+    $payer = User::factory()->create();
+    $waiting = User::factory()->create();
+    $interested = User::factory()->create();
+    $held = Events::for($event)->rsvp($payer)->going(tier: 'supporter');
+    $reference = (string) $held->fresh()?->payment_reference;
+    Events::rsvps()->confirmPayment($reference);
+    Events::for($event)->rsvp($waiting)->going(tier: 'supporter');
+    Events::for($event)->rsvp($interested)->interested();
+    EventBus::fake([RsvpCancelled::class, RsvpChanged::class]);
+
+    // The account is gone for good: its paid seat goes to the waitlist, and the host hears about
+    // it the way it hears about a removal — the refund trigger, with the payment reference.
+    $payer->forceDelete();
+
+    EventBus::assertDispatchedTimes(RsvpCancelled::class, 1);
+    EventBus::assertDispatched(RsvpCancelled::class, static fn (RsvpCancelled $cancelled): bool => $cancelled->wasPaid
+        && $cancelled->rsvp->payment_reference === $reference);
+    EventBus::assertDispatched(RsvpChanged::class, static fn (RsvpChanged $changed): bool => $changed->from === RsvpStatus::Going
+        && $changed->rsvp->status === RsvpStatus::NotGoing
+        && (string) $changed->rsvp->attendee_id === (string) $payer->getKey());
+    expect($waiting->rsvpFor($event)?->status)->toBe(RsvpStatus::Held);
+
+    // An RSVP that held no seat leaves without a cancellation.
+    $interested->forceDelete();
+    EventBus::assertDispatchedTimes(RsvpCancelled::class, 1);
+    EventBus::assertDispatched(RsvpChanged::class, static fn (RsvpChanged $changed): bool => $changed->from === RsvpStatus::Interested);
 });
