@@ -89,7 +89,8 @@ final readonly class EventAttendees
     }
 
     /**
-     * Confirm a held RSVP by hand (paid at the door, say), with the payment reference when given.
+     * Confirm a held RSVP by hand. With the payment reference it counts as paid; without one it
+     * was paid another way (cash at the door) and the hold's online checkout is dropped.
      */
     public function confirm(Rsvp|Model $who, ?string $reference = null): Rsvp
     {

@@ -196,3 +196,35 @@ test('force_deleting_an_attendee_reports_a_paid_seat', function (): void {
     EventBus::assertDispatchedTimes(RsvpCancelled::class, 1);
     EventBus::assertDispatched(RsvpChanged::class, static fn (RsvpChanged $changed): bool => $changed->from === RsvpStatus::Interested);
 });
+
+test('a_door_confirmation_without_a_reference_drops_the_online_checkout', function (): void {
+    $event = supporterEvent();
+    $door = User::factory()->create();
+    $held = Events::for($event)->rsvp($door)->going(tier: 'supporter');
+    $checkout = (string) $held->fresh()?->payment_reference;
+
+    // Paid another way (cash at the door): the hold's online checkout no longer belongs to it.
+    $going = Events::for($event)->attendees()->confirm($door);
+
+    expect($going->status)->toBe(RsvpStatus::Going)
+        ->and($going->fresh()?->payment_reference)->toBeNull()
+        ->and($going->fresh()?->payment_url)->toBeNull()
+        ->and($going->fresh()?->amount)->toBeNull()
+        // A later online payment of that checkout is not found: the host refunds it.
+        ->and(fn () => Events::rsvps()->confirmPayment($checkout))->toThrow(RsvpNotFoundException::class);
+
+    // Leaving reports no payment the package knows of.
+    EventBus::fake([RsvpCancelled::class]);
+    Events::for($event)->attendees()->remove($door);
+    EventBus::assertDispatched(RsvpCancelled::class, static fn (RsvpCancelled $cancelled): bool => ! $cancelled->wasPaid);
+
+    // With the reference the manager knows, the seat counts as paid.
+    $card = User::factory()->create();
+    Events::for($event)->rsvp($card)->going(tier: 'supporter');
+    $confirmed = Events::for($event)->attendees()->confirm($card, 'terminal-42');
+
+    expect($confirmed->fresh()?->payment_reference)->toBe('terminal-42')
+        ->and($confirmed->fresh()?->amount?->toDecimal())->toBe('15.00');
+    Events::for($event)->attendees()->remove($card);
+    EventBus::assertDispatched(RsvpCancelled::class, static fn (RsvpCancelled $cancelled): bool => $cancelled->wasPaid);
+});

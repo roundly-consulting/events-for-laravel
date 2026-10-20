@@ -21,9 +21,12 @@ use RoundlyConsulting\Events\Support\SeatBook;
 use RoundlyConsulting\Events\Support\SeatErrors;
 
 /**
- * A manager confirms a held RSVP by hand — paid at the door, say: held → going, with the payment
- * reference when given. A lapsed hold takes a free seat again, or the event is full. Not bound to
- * the start (cash at the door comes after it); a cancelled event refuses (`RsvpClosedException`).
+ * A manager confirms a held RSVP by hand — paid at the door, say: held → going. With a payment
+ * reference the seat counts as paid (the reference is stored, the amount kept). Without one it
+ * was paid another way: the hold's online checkout, its URL and amount are dropped, so a later
+ * online payment of it is not found (refund) and leaving reports no payment. A lapsed hold takes
+ * a free seat again, or the event is full. Not bound to the start (cash at the door comes after
+ * it); a cancelled event refuses (`RsvpClosedException`).
  */
 final readonly class ConfirmRsvpAction
 {
@@ -66,7 +69,7 @@ final readonly class ConfirmRsvpAction
                 $rsvp->payment_reference = $reference;
             }
 
-            $this->seats->execute($book, $rsvp, RsvpStatus::Going, $rsvp->guests, $tierId, $actor, late: $rsvp->status === RsvpStatus::Expired, paid: true);
+            $this->seats->execute($book, $rsvp, RsvpStatus::Going, $rsvp->guests, $tierId, $actor, late: $rsvp->status === RsvpStatus::Expired, paid: $reference !== null);
             // Lapsed holds released above give their seats to the waitlist.
             $this->promote->execute($book);
 

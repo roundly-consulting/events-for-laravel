@@ -9,6 +9,7 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 ### Changed
 
 - An attendee's own paid answer asks for its checkout through the manager (`Events::rsvps()->requestPayment()`, with no actor, so no policy check), like the queued request after a promotion: `Events::fake()` now records it, so `assertPaymentRequested()` passes and `assertNoPaymentRequested()` fails after a paid RSVP. The checkout itself is unchanged.
+- A manager's `confirm()` without a payment reference now means "paid another way" (cash at the door): the hold's online checkout, its URL and amount are dropped, so a later online payment of that checkout is not found (refund it) and leaving reports `wasPaid: false`. With a reference (`confirm($rsvp, 'terminal-42')`) the seat counts as paid, as before.
 - The default reference resources (`events.resources.*`) render a host model's `type` as its `events.organizers` / `events.attendees` alias (`user`), the one request bodies and `alias:key` paths take, instead of the class basename (`User`): a client can send back what it reads. A class in neither map still renders its basename; organizers win when a class has two aliases. Hosts that compared `type` with the basename should compare with the alias (or point `events.resources.*` at their own resource).
 
 ### Fixed

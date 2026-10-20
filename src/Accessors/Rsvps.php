@@ -59,7 +59,8 @@ final readonly class Rsvps
     }
 
     /**
-     * Confirm a held RSVP by hand, with the payment reference when given.
+     * Confirm a held RSVP by hand. With the payment reference it counts as paid; without one it
+     * was paid another way (cash at the door) and the hold's online checkout is dropped.
      */
     public function confirm(Rsvp $rsvp, ?string $reference = null): Rsvp
     {
