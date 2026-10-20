@@ -3,9 +3,14 @@
 declare(strict_types=1);
 
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
+use RoundlyConsulting\Events\Facades\Events;
 use RoundlyConsulting\Events\Models\Event;
+use RoundlyConsulting\Events\Models\Rsvp;
 use RoundlyConsulting\Events\Support\Clock;
+use RoundlyConsulting\Events\Tests\Fixtures\Models\User;
+use RoundlyConsulting\Events\Tests\Support\Scenarios;
 use RoundlyConsulting\Lifecycle\Facades\Lifecycles;
 
 afterEach(function (): void {
@@ -113,4 +118,23 @@ test('local_dates_follow_the_timezone', function (): void {
     // An event ending exactly at local midnight does not occupy the next day.
     $midnight = Event::factory()->startingAt(CarbonImmutable::parse('2026-07-20 22:00', 'Europe/Bratislava'), hours: 2)->create(['timezone' => 'Europe/Bratislava']);
     expect($midnight->ends_on)->toBe('2026-07-20');
+});
+
+test('immutable_dates_still_store_utc_timestamps', function (): void {
+    CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-06-01 12:00:00', 'UTC'));
+    // A host that made every date immutable (`Date::use(CarbonImmutable::class)`).
+    Date::use(CarbonImmutable::class);
+
+    try {
+        $event = Scenarios::event();
+        $rsvp = Events::for($event)->rsvp(User::factory()->create())->going();
+        $draft = Scenarios::event(publish: false);
+        Events::for($draft)->delete();
+
+        expect(substr((string) rawEvent($event)['created_at'], 0, 19))->toBe('2026-06-01 12:00:00')
+            ->and(substr((string) rawEvent($draft)['deleted_at'], 0, 19))->toBe('2026-06-01 12:00:00')
+            ->and(Rsvp::query()->find($rsvp->getKey())?->created_at?->toIso8601String())->toBe('2026-06-01T12:00:00+00:00');
+    } finally {
+        Date::useDefault();
+    }
 });
