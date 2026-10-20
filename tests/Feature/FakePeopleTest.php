@@ -128,3 +128,27 @@ test('fake_ignores_no_op_co_host_and_undo_calls', function (): void {
         ->and(fn () => $fake->assertNoCoHostRemoved())->toThrow(ExpectationFailedException::class)
         ->and(fn () => $fake->assertNoCheckInUndone())->toThrow(ExpectationFailedException::class);
 });
+
+test('a_repeat_scan_satisfies_assert_nothing_checked_in', function (): void {
+    $event = Scenarios::event(capacity: 5);
+    $member = User::factory()->create();
+    $code = (string) Events::for($event)->rsvp($member)->going()->checkInCode();
+    Scenarios::minutesBeforeStart($event, 30);
+    Events::for($event)->checkIn($code);
+    $fake = Events::fake();
+
+    // Scanned again (or checked in by hand again): nobody new came through the door.
+    Events::for($event)->checkIn($code);
+    Events::for($event)->attendees()->checkIn($member);
+
+    $fake->assertNothingCheckedIn();
+    expect(fn () => $fake->assertCheckedIn($event, $member))->toThrow(ExpectationFailedException::class);
+
+    // A first check-in counts.
+    $walkIn = User::factory()->create();
+    Events::for($event)->attendees()->add($walkIn);
+    Events::for($event)->attendees()->checkIn($walkIn);
+
+    $fake->assertCheckedIn($event, $walkIn);
+    expect(fn () => $fake->assertNothingCheckedIn())->toThrow(ExpectationFailedException::class);
+});

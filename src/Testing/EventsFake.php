@@ -649,10 +649,16 @@ final class EventsFake extends EventsManager
             && ($attendee === null || $recorded->result->attendee->is($attendee)));
     }
 
+    /**
+     * Nobody came through the door: no first check-in (a repeat scan does not count, as it does
+     * not for {@see self::assertCheckedIn()}).
+     */
     public function assertNothingCheckedIn(): void
     {
-        $this->assertNotRecorded(EventOperation::CheckIn);
-        $this->assertNotRecorded(EventOperation::ManualCheckIn);
+        $first = static fn (RecordedEventOperation $recorded): bool => $recorded->result instanceof CheckInResult && $recorded->result->firstCheckIn;
+
+        $this->assertNoneChanged(EventOperation::CheckIn, $first);
+        $this->assertNoneChanged(EventOperation::ManualCheckIn, $first);
     }
 
     /**
