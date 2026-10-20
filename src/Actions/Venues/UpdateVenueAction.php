@@ -6,6 +6,7 @@ namespace RoundlyConsulting\Events\Actions\Venues;
 
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Database\Eloquent\Model;
+use RoundlyConsulting\Events\Actions\Internal\ResequenceVenueEventsAction;
 use RoundlyConsulting\Events\DataTransferObjects\UpdateVenueData;
 use RoundlyConsulting\Events\Events\VenueUpdated;
 use RoundlyConsulting\Events\Models\Venue;
@@ -15,11 +16,13 @@ use RoundlyConsulting\Events\Support\VenueInput;
 
 /**
  * Changes a venue: only the fields given. Never changes the timezone or instants of its events —
- * `events:doctor` reports events whose timezone no longer matches their venue's.
+ * `events:doctor` reports events whose timezone no longer matches their venue's. A new name,
+ * address or coordinates raise the calendar `sequence` of its announced events that are not over.
  */
 final readonly class UpdateVenueAction
 {
     public function __construct(
+        private ResequenceVenueEventsAction $sequences,
         private Dispatcher $events,
     ) {}
 
@@ -55,6 +58,7 @@ final readonly class UpdateVenueAction
 
         if ($changed !== []) {
             $venue->save();
+            $this->sequences->execute($venue, $changed);
             $this->events->dispatch(new VenueUpdated($venue, $changed, $actor));
         }
 

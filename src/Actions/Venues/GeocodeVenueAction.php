@@ -6,6 +6,7 @@ namespace RoundlyConsulting\Events\Actions\Venues;
 
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Database\Eloquent\Model;
+use RoundlyConsulting\Events\Actions\Internal\ResequenceVenueEventsAction;
 use RoundlyConsulting\Events\Events\VenueGeocoded;
 use RoundlyConsulting\Events\Events\VenueGeocodingFailed;
 use RoundlyConsulting\Events\Models\Venue;
@@ -27,6 +28,7 @@ final readonly class GeocodeVenueAction
 {
     public function __construct(
         private GeolocationManager $geolocation,
+        private ResequenceVenueEventsAction $sequences,
         private Dispatcher $events,
     ) {}
 
@@ -49,7 +51,9 @@ final readonly class GeocodeVenueAction
 
         $venue->coordinates = $location->coordinates();
         $venue->geocoded_at = Clock::now();
+        $changed = array_keys($venue->getDirty());
         $venue->save();
+        $this->sequences->execute($venue, $changed);
 
         $this->events->dispatch(new VenueGeocoded($venue));
 

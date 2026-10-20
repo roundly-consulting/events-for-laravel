@@ -188,3 +188,23 @@ test('the_editor_changes_only_what_it_is_given', function (): void {
         ->and($event->fresh()?->rsvp_closes_at)->not->toBeNull()
         ->and($event->fresh()?->waitlist_auto_promote)->toBeTrue();
 });
+
+test('a_venue_address_change_reaches_subscribed_calendars', function (): void {
+    $venue = Venue::factory()->create(['timezone' => 'Europe/Bratislava', 'city' => 'Bratislava']);
+    $event = Scenarios::event();
+    $event->forceFill(['venue_id' => $venue->getKey()])->save();
+    $draft = Scenarios::event(publish: false);
+    $draft->forceFill(['venue_id' => $venue->getKey()])->save();
+    $sequence = $event->fresh()?->sequence;
+    $draftSequence = $draft->fresh()?->sequence;
+
+    Events::venues()->update($venue, new UpdateVenueData(address: new AddressData(city: 'Košice')));
+
+    expect($event->fresh()?->sequence)->toBe($sequence + 1)
+        ->and($draft->fresh()?->sequence)->toBe($draftSequence)
+        ->and((string) Events::for($event->fresh() ?? $event)->ics())->toContain('SEQUENCE:'.($sequence + 1));
+
+    // A change calendars never show (the capacity) bumps nothing.
+    Events::venues()->update($venue, new UpdateVenueData(capacity: 50));
+    expect($event->fresh()?->sequence)->toBe($sequence + 1);
+});
