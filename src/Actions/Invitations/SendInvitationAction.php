@@ -21,7 +21,8 @@ use RoundlyConsulting\Events\Support\LockedEvent;
  * a friend" notice. Idempotent per invitee: sending again mints a new token and the old one dies
  * (a revoked or declined invitation becomes pending again). The token is returned once on the
  * invitation (`plainToken`) and carried by `InvitationSent` for the accept link; only its hash is
- * stored. It expires at the start.
+ * stored. It expires at the event's current start — a reschedule moves it, and a postponed
+ * event's links stay valid until it gets a new date.
  */
 final readonly class SendInvitationAction
 {
@@ -64,7 +65,6 @@ final readonly class SendInvitationAction
 
             $invitation->token_hash = $this->tokens->hash($token);
             $invitation->message = $message;
-            $invitation->expires_at = $event->starts_at;
             $invitation->invited_by_type = $actor?->getMorphClass();
             $invitation->invited_by_id = $actor?->getKey();
             $invitation->save();

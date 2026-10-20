@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
 use RoundlyConsulting\Events\Casts\UtcDateTime;
 use RoundlyConsulting\Events\Concerns\StoresUtcTimestamps;
 use RoundlyConsulting\Events\Database\Factories\EventInvitationFactory;
+use RoundlyConsulting\Events\Enums\EventPhase;
 use RoundlyConsulting\Events\Enums\InvitationStatus;
 use RoundlyConsulting\Events\Support\EventModels;
 use RoundlyConsulting\Events\Support\EventsConfig;
@@ -21,7 +22,8 @@ use RoundlyConsulting\Events\Support\EventsConfig;
  * pending or accepted invitees may RSVP. The token is a bearer secret stored as a hash only;
  * re-sending rotates it.
  *
- * Not soft-deleted (a unique row per event and invitee): `revoked` is its "deleted".
+ * Not soft-deleted (a unique row per event and invitee): `revoked` is its "deleted". The link
+ * expires at the event's current start ({@see self::expiresAt()}), so a reschedule moves it.
  *
  * @property int $id
  * @property int|string $event_id
@@ -32,7 +34,6 @@ use RoundlyConsulting\Events\Support\EventsConfig;
  * @property InvitationStatus $status
  * @property string|null $message
  * @property string|null $token_hash
- * @property CarbonImmutable|null $expires_at
  * @property CarbonImmutable|null $responded_at
  * @property CarbonImmutable|null $created_at
  * @property CarbonImmutable|null $updated_at
@@ -92,13 +93,23 @@ final class EventInvitation extends Model
     }
 
     /**
+     * When the link stops working: the event's current start — none while the event is
+     * postponed (its date is open). Read from the schedule, never stored, so a reschedule moves it.
+     */
+    public function expiresAt(): ?CarbonImmutable
+    {
+        $event = $this->event;
+
+        return $event->phase === EventPhase::Postponed ? null : $event->starts_at;
+    }
+
+    /**
      * @return array<string, string>
      */
     protected function casts(): array
     {
         return [
             'status' => InvitationStatus::class,
-            'expires_at' => UtcDateTime::class,
             'responded_at' => UtcDateTime::class,
             'created_at' => UtcDateTime::class,
             'updated_at' => UtcDateTime::class,

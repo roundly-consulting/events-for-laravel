@@ -44,7 +44,7 @@ it('invites, and the invitee accepts from the link', function (): void {
     expect($invitation->status)->toBe(InvitationStatus::Pending)
         ->and($invitation->plainToken)->toMatch('/^INV1-[A-Z2-7]{32}$/')
         ->and($invitation->token_hash)->toHaveLength(64)
-        ->and($invitation->expires_at?->equalTo($event->starts_at))->toBeTrue()
+        ->and($invitation->expiresAt()?->equalTo($event->starts_at))->toBeTrue()
         ->and($invitation->invited_by_id)->toBe($organizer->getKey())
         ->and($invitation->toArray())->not->toHaveKey('token_hash')
         ->and(Events::for($event)->invitations()->pending()->count())->toBe(1);

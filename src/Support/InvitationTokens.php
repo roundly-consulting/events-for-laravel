@@ -41,7 +41,8 @@ final readonly class InvitationTokens
 
     /**
      * The live invitation behind a token — or the uniform refusal for an unknown, malformed,
-     * revoked, declined, used or expired token, or one of a deleted event.
+     * revoked, declined, used or expired token (from the event's current start on), or one of
+     * a deleted event.
      */
     public function invitation(#[SensitiveParameter] string $token): EventInvitation
     {
@@ -51,7 +52,7 @@ final readonly class InvitationTokens
 
         if ($invitation === null || $event === null || $event->trashed()
             || ! in_array($invitation->status, [InvitationStatus::Pending, InvitationStatus::Accepted], true)
-            || ($invitation->expires_at !== null && Clock::now()->greaterThanOrEqualTo($invitation->expires_at))) {
+            || (($expires = $invitation->expiresAt()) !== null && Clock::now()->greaterThanOrEqualTo($expires))) {
             throw InvalidInvitationException::invalid();
         }
 

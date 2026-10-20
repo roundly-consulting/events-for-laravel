@@ -30,7 +30,7 @@ final class InvitationResource extends JsonResource
             'invitee' => References::invitee($invitation->invitee, $request),
             'invited_by' => References::actor($invitation->invitedBy, $request),
             'message' => $invitation->message,
-            'expires_at' => $invitation->expires_at?->setTimezone($timezone)->toIso8601String(),
+            'expires_at' => $invitation->expiresAt()?->setTimezone($timezone)->toIso8601String(),
             'responded_at' => $invitation->responded_at?->setTimezone($timezone)->toIso8601String(),
             'sent_at' => $invitation->created_at?->setTimezone($timezone)->toIso8601String(),
         ];

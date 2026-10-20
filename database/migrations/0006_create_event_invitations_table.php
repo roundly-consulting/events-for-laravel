@@ -25,7 +25,6 @@ return new class extends Migration
             $table->text('message')->nullable();
             // The token is a bearer secret: only its hash is stored.
             $table->string('token_hash', 64)->nullable()->unique('ev_invitations_token_unique');
-            $table->timestamp('expires_at')->nullable();
             $table->timestamp('responded_at')->nullable();
             $table->timestamps();
 
