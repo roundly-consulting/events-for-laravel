@@ -29,6 +29,7 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 - The fake's co-host and undo assertions check what really happened: `assertCoHostAdded()` / `assertCoHostRemoved()` / `assertCheckInUndone()` no longer pass for a call that changed nothing (adding the organizer or an existing co-host, removing someone who is no co-host, undoing a check-in that never happened), and their `assertNo…()` pairs no longer fail for one. `UndoCheckInAction` returns the RSVP with `wasChanged('checked_in_at')` set when it undid a check-in.
 - Sending an invitation again after it was accepted mails the new link (it was minted but the notice was dropped at delivery). An invitation notice whose link died before delivery — sent again, or answered meanwhile — is no longer mailed.
 - JSON-LD of a rescheduled all-day event gives the announced first day as `previousStartDate` instead of repeating the new `startDate`.
+- Two status changes of one event inside one surrounding transaction (a silent reschedule, then a cancellation or a postponement) keep their own details: the reschedule stays silent with the right `previousStartsAt`, and the cancellation reports the holds it released.
 
 ## 1.0.0 - 2026-10-20
 

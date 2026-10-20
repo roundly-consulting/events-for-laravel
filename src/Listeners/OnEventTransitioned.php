@@ -46,7 +46,7 @@ final readonly class OnEventTransitioned
             return;
         }
 
-        $note = $this->notes->pull($event);
+        $note = $this->notes->pull($event, $transitioned->historyId);
         $actor = $transitioned->actor;
 
         $this->events->dispatch(new EventStatusChanged($event, $transitioned->transition, $transitioned->from, $transitioned->to, $actor, $note->silent));

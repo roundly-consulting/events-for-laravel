@@ -3,7 +3,9 @@
 declare(strict_types=1);
 
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event as EventBus;
+use Illuminate\Support\Facades\Notification;
 use RoundlyConsulting\Events\DataTransferObjects\UpdateEventData;
 use RoundlyConsulting\Events\Enums\AttendanceMode;
 use RoundlyConsulting\Events\Enums\EventPhase;
@@ -26,10 +28,14 @@ use RoundlyConsulting\Events\Exceptions\UnknownEventTransitionException;
 use RoundlyConsulting\Events\Facades\Events;
 use RoundlyConsulting\Events\Models\Event;
 use RoundlyConsulting\Events\Models\Venue;
+use RoundlyConsulting\Events\Notifications\EventPostponedNotification;
+use RoundlyConsulting\Events\Notifications\EventRescheduledNotification;
 use RoundlyConsulting\Events\Support\Clock;
 use RoundlyConsulting\Events\Tests\Fixtures\Lifecycles\BrokenLifecycle;
 use RoundlyConsulting\Events\Tests\Fixtures\Lifecycles\CustomLifecycle;
 use RoundlyConsulting\Events\Tests\Fixtures\Models\User;
+use RoundlyConsulting\Events\Tests\Fixtures\Payments\FakePaymentCollector;
+use RoundlyConsulting\Events\Tests\Support\Scenarios;
 use RoundlyConsulting\Lifecycle\Exceptions\TransitionDeniedException;
 use RoundlyConsulting\Lifecycle\Facades\Lifecycles;
 use RoundlyConsulting\Money\Money;
@@ -377,4 +383,39 @@ test('a_scheduled_lifecycle_reschedule_is_denied_when_it_runs', function (): voi
     expect($result->executed)->toBe(0)
         ->and($event->fresh()?->phase)->toBe(EventPhase::Scheduled)
         ->and($event->fresh()?->starts_at->toIso8601String())->toBe($startsAt);
+});
+
+test('two_transitions_in_one_host_transaction_keep_their_own_notes', function (): void {
+    FakePaymentCollector::reset();
+    config()->set('events.payments.collector', FakePaymentCollector::class);
+    EventBus::fake([EventRescheduled::class, EventCancelled::class]);
+    $event = Scenarios::event(capacity: 5);
+    Events::for($event)->tiers()->add('Paid', price: Money::ofMajor('10', 'EUR'), key: 'paid');
+    $held = Events::for($event)->rsvp(User::factory()->create())->going(tier: 'paid');
+
+    // The host's own transaction wraps both: each transition's note reaches its own domain event.
+    DB::transaction(static function () use ($event): void {
+        Events::for($event)->silently()->reschedule('2027-03-10 20:00');
+        Events::for($event)->cancel('Venue closed');
+    });
+
+    EventBus::assertDispatched(EventRescheduled::class, static fn (EventRescheduled $rescheduled): bool => $rescheduled->silent
+        && $rescheduled->previousStartsAt->toIso8601String() === '2027-02-10T19:00:00+00:00');
+    EventBus::assertDispatched(EventCancelled::class, static fn (EventCancelled $cancelled): bool => ! $cancelled->silent
+        && $cancelled->releasedHolds === [$held->getKey()]);
+});
+
+test('a_silent_reschedule_then_postpone_in_one_transaction_stays_silent', function (): void {
+    $event = Scenarios::event(capacity: 5);
+    $going = User::factory()->create();
+    Events::for($event)->rsvp($going)->going();
+    Notification::fake();
+
+    DB::transaction(static function () use ($event): void {
+        Events::for($event)->silently()->reschedule('2027-03-10 20:00');
+        Events::for($event)->postpone('Weather');
+    });
+
+    Notification::assertNotSentTo($going, EventRescheduledNotification::class);
+    Notification::assertSentTo($going, EventPostponedNotification::class);
 });

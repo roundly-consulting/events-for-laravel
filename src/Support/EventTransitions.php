@@ -54,20 +54,28 @@ final class EventTransitions
                 $before($event);
             }
 
-            App::make(TransitionNotes::class)->put($event, $note);
+            $notes = App::make(TransitionNotes::class);
+            $notes->put($event, $note);
 
             $handle = App::make(LifecycleManager::class)->for($event, 'status');
             $handle = ($system ? $handle->asSystem() : $handle->by($actor))->because($reason)->with($payload);
 
             try {
-                return $handle->apply($transition);
+                $result = $handle->apply($transition);
+
+                // Kept by its history row: another transition of the event in the same outer
+                // transaction gets a note of its own.
+                if (! $result->replayed) {
+                    $notes->applied($event, $result->record->id);
+                }
+
+                return $result;
             } catch (TransitionDeniedException $exception) {
-                App::make(TransitionNotes::class)->pull($event);
                 $unknown = array_filter($exception->denials(), static fn (Denial $denial): bool => $denial->is(DenialCode::UnknownTransition));
 
                 throw $unknown === [] ? EventTransitionDeniedException::wrap($exception) : UnknownEventTransitionException::named($transition);
             } finally {
-                App::make(TransitionNotes::class)->settle($event);
+                $notes->forget($event);
             }
         });
     }
