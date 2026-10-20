@@ -27,20 +27,6 @@
     "support": {
         "docs": "https://roundly-consulting.com/open-source/docs/events-for-laravel"
     },
-    "repositories": [
-        {
-            "type": "path",
-            "url": "../tags-for-laravel*",
-            "options": {
-                "symlink": false
-            }
-        },
-        {
-            "type": "vcs",
-            "url": "https://github.com/roundly-consulting/tags-for-laravel",
-            "no-api": true
-        }
-    ],
     "require": {
         "php": "^8.4",
         "ext-json": "*",
@@ -71,7 +57,7 @@
         "roundly-consulting/qr-for-laravel": "^1.1.2",
         "roundly-consulting/query-builder-for-laravel": "^1.2.1",
         "roundly-consulting/sluggable-for-laravel": "^1.1.3",
-        "roundly-consulting/tags-for-laravel": "@dev",
+        "roundly-consulting/tags-for-laravel": "^1.0",
         "roundly-consulting/translatable-for-laravel": "^1.1.2"
     },
     "require-dev": {
