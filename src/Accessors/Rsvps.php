@@ -37,7 +37,8 @@ final readonly class Rsvps
     ) {}
 
     /**
-     * Attribute the following calls to `$actor` and check `manageAttendees` for them.
+     * Attribute the following calls to `$actor` and check `manageAttendees` for them —
+     * `requestPayment()` also lets the RSVP's own attendee ask for their checkout.
      */
     public function by(?Model $actor): self
     {
@@ -126,11 +127,15 @@ final readonly class Rsvps
      */
     public function requestPayment(Rsvp $rsvp): ?PaymentRequest
     {
+        if ($this->actor !== null && ! ($rsvp->attendee_type === $this->actor->getMorphClass() && (string) $rsvp->attendee_id === (string) $this->actor->getKey())) {
+            EventAuthorization::authorize($this->actor, 'manageAttendees', $rsvp->event);
+        }
+
         return $this->manager->perform(
             EventOperation::RequestPayment,
             RequestAdmissionPaymentAction::class,
             static fn (RequestAdmissionPaymentAction $action): ?PaymentRequest => $action->execute($rsvp),
-            ['event' => $rsvp->event, 'rsvp' => $rsvp],
+            ['event' => $rsvp->event, 'rsvp' => $rsvp, 'actor' => $this->actor],
         );
     }
 }

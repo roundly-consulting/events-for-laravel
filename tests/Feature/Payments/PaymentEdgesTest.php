@@ -155,3 +155,13 @@ test('a_repeated_door_confirmation_still_promotes_after_a_lapsed_hold', function
     expect($lapsing->rsvpFor($event)?->status)->toBe(RsvpStatus::Expired)
         ->and($waiting->rsvpFor($event)?->status)->toBe(RsvpStatus::Held);
 });
+
+test('rsvps_by_actor_request_payment_checks_the_policy', function (): void {
+    $event = supporterEvent();
+    $attendee = User::factory()->create();
+    $held = Events::for($event)->rsvp($attendee)->going(tier: 'supporter');
+
+    expect(fn () => Events::rsvps()->by(User::factory()->create())->requestPayment($held))->toThrow(AuthorizationException::class)
+        ->and(Events::rsvps()->by($attendee)->requestPayment($held)?->reference)->toBe($held->payment_reference)
+        ->and(Events::rsvps()->by($event->organizer)->requestPayment($held)?->reference)->toBe($held->payment_reference);
+});
