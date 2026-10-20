@@ -170,3 +170,21 @@ test('the_fake_records_nothing_an_outer_transaction_rolled_back', function (): v
     DB::transaction(static fn () => Events::for($event)->update(new UpdateEventData(title: 'Renamed')));
     $fake->assertUpdated($event, ['title']);
 });
+
+test('the_editor_changes_only_what_it_is_given', function (): void {
+    $event = Scenarios::event(capacity: 10);
+    Events::for($event)->update(new UpdateEventData(rsvpOpensAt: '2027-01-02 10:00', waitlistAutoPromote: false));
+
+    Events::for($event)->edit()->rsvpWindow(closesAt: '2027-02-01 10:00')->waitlist(false)->save();
+    $fresh = $event->fresh();
+
+    expect($fresh?->rsvp_opens_at?->setTimezone('Europe/Bratislava')->format('Y-m-d H:i'))->toBe('2027-01-02 10:00')
+        ->and($fresh?->rsvp_closes_at?->setTimezone('Europe/Bratislava')->format('Y-m-d H:i'))->toBe('2027-02-01 10:00')
+        ->and($fresh?->waitlist)->toBeFalse()
+        ->and($fresh?->waitlist_auto_promote)->toBeFalse();
+
+    Events::for($event)->edit()->rsvpWindow(opensAt: null)->waitlist(true, autoPromote: true)->save();
+    expect($event->fresh()?->rsvp_opens_at)->toBeNull()
+        ->and($event->fresh()?->rsvp_closes_at)->not->toBeNull()
+        ->and($event->fresh()?->waitlist_auto_promote)->toBeTrue();
+});

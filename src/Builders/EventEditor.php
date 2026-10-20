@@ -13,6 +13,7 @@ use RoundlyConsulting\Events\Enums\Visibility;
 use RoundlyConsulting\Events\Handles\EventHandle;
 use RoundlyConsulting\Events\Models\Event;
 use RoundlyConsulting\Events\Models\Venue;
+use RoundlyConsulting\Events\Support\NotGiven;
 
 /**
  * `Events::for($event)->edit()` — the builder's setters for an existing event. `save()` builds an
@@ -115,12 +116,18 @@ final class EventEditor
         return $this->with('maxGuests', $guests);
     }
 
-    public function waitlist(bool $on = true, bool $autoPromote = true): self
+    /**
+     * The waitlist on or off; automatic promotion changes only when given.
+     */
+    public function waitlist(bool $on = true, bool|NotGiven $autoPromote = NotGiven::Value): self
     {
         return $this->with('waitlist', $on)->with('waitlistAutoPromote', $autoPromote);
     }
 
-    public function rsvpWindow(CarbonInterface|string|null $opensAt = null, CarbonInterface|string|null $closesAt = null): self
+    /**
+     * The RSVP window: only the bounds given change (`null` clears one).
+     */
+    public function rsvpWindow(CarbonInterface|string|NotGiven|null $opensAt = NotGiven::Value, CarbonInterface|string|NotGiven|null $closesAt = NotGiven::Value): self
     {
         return $this->with('rsvpOpensAt', $opensAt)->with('rsvpClosesAt', $closesAt);
     }
