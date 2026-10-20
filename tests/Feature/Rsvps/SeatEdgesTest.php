@@ -157,3 +157,31 @@ test('a_repeated_going_answer_saves_a_changed_note', function (): void {
         ->and($queued->status)->toBe(RsvpStatus::Waitlisted)
         ->and($queued->fresh()?->note)->toBe('Wheelchair, two seats');
 });
+
+test('manager_changes_release_lapsed_holds_first', function (): void {
+    $event = Scenarios::event(capacity: 2, maxGuests: 1);
+    Events::for($event)->tiers()->add('Supporter', price: Money::ofMajor('15', 'EUR'), capacity: 1, key: 'supporter');
+    Events::for($event)->tiers()->add('Free', key: 'free');
+    $lapsing = User::factory()->create();
+    $guest = User::factory()->create();
+
+    Events::for($event)->rsvp($guest)->going(tier: 'free');
+    Events::for($event)->rsvp($lapsing)->going(tier: 'supporter');   // held until 12:30
+    Scenarios::freeze('2027-01-01 13:00:00');
+
+    // Until released, the lapsed hold fills the event and the supporter ticket type.
+    $bigger = Events::for($event)->attendees()->changeGuests($guest, 1);
+
+    expect($bigger->partySize())->toBe(2)
+        ->and($lapsing->rsvpFor($event)?->status)->toBe(RsvpStatus::Expired);
+
+    Events::for($event)->attendees()->changeGuests($guest, 0);
+    Events::for($event)->rsvp($lapsing)->going(tier: 'supporter');   // held again until 13:30
+    Scenarios::freeze('2027-01-01 14:00:00');
+
+    $moved = Events::for($event)->attendees()->changeTier($guest, 'supporter');
+
+    expect($moved->tier?->key)->toBe('supporter')
+        ->and($moved->status)->toBe(RsvpStatus::Going)
+        ->and($lapsing->rsvpFor($event)?->status)->toBe(RsvpStatus::Expired);
+});

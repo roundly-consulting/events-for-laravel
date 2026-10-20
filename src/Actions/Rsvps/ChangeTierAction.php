@@ -8,6 +8,7 @@ use Illuminate\Contracts\Bus\Dispatcher as Bus;
 use Illuminate\Database\Eloquent\Model;
 use RoundlyConsulting\Events\Actions\Internal\ApplySeatChangesAction;
 use RoundlyConsulting\Events\Actions\Internal\AutoPromoteAction;
+use RoundlyConsulting\Events\Actions\Internal\ExpireHoldsAction;
 use RoundlyConsulting\Events\Enums\RsvpStatus;
 use RoundlyConsulting\Events\Exceptions\RsvpNotFoundException;
 use RoundlyConsulting\Events\Jobs\RequestAdmissionPaymentJob;
@@ -28,6 +29,7 @@ final readonly class ChangeTierAction
 {
     public function __construct(
         private ApplySeatChangesAction $seats,
+        private ExpireHoldsAction $holds,
         private AutoPromoteAction $promote,
         private Bus $bus,
     ) {}
@@ -36,6 +38,8 @@ final readonly class ChangeTierAction
     {
         return EventTransaction::run($event, function () use ($event, $who, $tier, $actor): Rsvp {
             $book = SeatBook::open($event);
+            // Lapsed holds give their seats back before anything is counted.
+            $expired = $this->holds->execute($book);
             $rsvp = RsvpRules::rsvpOf($event, $who) ?? throw RsvpNotFoundException::missing();
             $chosen = RsvpRules::tier($book, $tier, manager: true);
             RsvpRules::assertParty($event, $chosen, $rsvp->guests);
@@ -44,6 +48,10 @@ final readonly class ChangeTierAction
             $currentTier = $rsvp->tier_id === null ? null : (int) $rsvp->tier_id;
 
             if ($tierId === $currentTier) {
+                if ($expired > 0) {
+                    $this->promote->execute($book);
+                }
+
                 return $rsvp;
             }
 
