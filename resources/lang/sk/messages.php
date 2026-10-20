@@ -20,8 +20,6 @@ return [
     'event_has_attendees' => 'Na podujatie sa prihlásili ľudia. Odložte ho alebo zrušte, aby sa to dozvedeli.',
     'event_invalid_sort_direction' => 'Smer zoradenia musí byť asc alebo desc, zadané: :direction.',
     'event_invalid_reminders' => 'Pripomienok môže byť najviac 5, každá ako trvanie ISO-8601 od PT5M do P31D.',
-    'event_invalid_visibility' => 'Viditeľnosť „:value“ nie je verejná, len cez odkaz ani súkromná.',
-    'event_not_an_organizer' => 'Tento model nemôže organizovať podujatia.',
     'event_invalid_datetime' => 'Hodnota :attribute nie je dátum a čas.',
     'event_finished' => 'Podujatie sa skončilo, už sa nedá meniť.',
     'event_slug_taken' => 'Slug „:slug“ je už obsadený.',
@@ -75,7 +73,6 @@ return [
     'rsvp_checked_in_party' => 'Skupina nemôže byť menšia ako počet ľudí, ktorí už prišli.',
     'rsvp_not_held' => 'Rezervácia nečaká na platbu.',
     'rsvp_not_going' => 'Účastník sa nezúčastní.',
-    'rsvp_not_waitlisted' => 'Účastník nie je na čakacej listine.',
     'hold_expired' => 'Rezervované miesta už nie sú voľné. Platbu vráťte.',
 
     'invalid_code' => 'Kód na vstup nie je platný.',

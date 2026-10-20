@@ -59,16 +59,6 @@ final class InvalidEventException extends EventsException
         return self::make('invalid_event', 422, [], 'event_invalid_reminders');
     }
 
-    public static function invalidVisibility(string $value): self
-    {
-        return self::make('invalid_event', 422, ['value' => $value], 'event_invalid_visibility');
-    }
-
-    public static function notAnOrganizer(): self
-    {
-        return self::make('invalid_event', 422, [], 'event_not_an_organizer');
-    }
-
     public static function invalidDateTime(string $attribute): self
     {
         return self::make('invalid_event', 422, ['attribute' => $attribute], 'event_invalid_datetime');

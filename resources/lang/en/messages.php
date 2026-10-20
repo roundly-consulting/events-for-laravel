@@ -20,8 +20,6 @@ return [
     'event_has_attendees' => 'People are coming to this event. Postpone or cancel it so they are told.',
     'event_invalid_sort_direction' => 'The sort direction must be asc or desc, :direction given.',
     'event_invalid_reminders' => 'Reminders are at most 5 ISO-8601 durations between PT5M and P31D.',
-    'event_invalid_visibility' => 'The visibility ":value" is not public, unlisted or private.',
-    'event_not_an_organizer' => 'This model cannot organize events.',
     'event_invalid_datetime' => 'The :attribute value is not a date and time.',
     'event_finished' => 'The event is over; it can no longer change.',
     'event_slug_taken' => 'The slug ":slug" is already taken.',
@@ -75,7 +73,6 @@ return [
     'rsvp_checked_in_party' => 'The party cannot be smaller than the people already checked in.',
     'rsvp_not_held' => 'The RSVP is not waiting for a payment.',
     'rsvp_not_going' => 'The attendee is not going.',
-    'rsvp_not_waitlisted' => 'The attendee is not on the waitlist.',
     'hold_expired' => 'The reserved seats are gone. Refund the payment.',
 
     'invalid_code' => 'The check-in code is not valid.',
