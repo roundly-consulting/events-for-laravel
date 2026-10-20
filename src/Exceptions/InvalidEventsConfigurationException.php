@@ -18,6 +18,16 @@ final class InvalidEventsConfigurationException extends PackageToolkitException
         return new self(sprintf('Configuration value [%s] must be an ISO-8601 duration such as PT2H, [%s] given.', $key, self::describe($value)));
     }
 
+    public static function outOfRange(string $key, mixed $value, string $range): self
+    {
+        return new self(sprintf('Configuration value [%s] must be %s, [%s] given.', $key, str_starts_with($range, 'longer') ? $range : 'between '.$range, self::describe($value)));
+    }
+
+    public static function tooMany(string $key, int $max): self
+    {
+        return new self(sprintf('Configuration value [%s] may list at most %d entries.', $key, $max));
+    }
+
     public static function invalidTimezone(string $key, mixed $value): self
     {
         return new self(sprintf('Configuration value [%s] must be an IANA timezone such as Europe/Bratislava, [%s] given.', $key, self::describe($value)));

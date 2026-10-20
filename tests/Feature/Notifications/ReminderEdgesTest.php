@@ -53,3 +53,19 @@ test('an_all_day_reminder_is_never_sent_after_its_civil_hour', function (): void
     // 09:00 local has passed: a reminder "an hour before" makes no sense any more.
     expect(sweepRemindersAt('2027-01-16 08:30:00'))->toBe(0);
 });
+
+test('configured_reminder_offsets_are_range_checked', function (array $offsets): void {
+    config()->set('events.reminders.offsets', $offsets);
+
+    expect(fn () => EventsConfig::reminderOffsets())->toThrow(InvalidEventsConfigurationException::class, 'events.reminders.offsets');
+})->with([
+    'past the sweep window' => [['P40D']],
+    'below five minutes' => [['PT1M']],
+    'more than five' => [['P1D', 'PT1H', 'PT2H', 'PT3H', 'PT4H', 'PT5H']],
+]);
+
+test('configured_reminder_offsets_in_range_are_read', function (): void {
+    config()->set('events.reminders.offsets', ['P31D', 'PT5M']);
+
+    expect(EventsConfig::reminderOffsets())->toBe(['P31D', 'PT5M']);
+});

@@ -726,17 +726,32 @@ final class EventsConfig
         }
 
         $list = [];
+        // The per-event bounds (EventInput::reminders()): the sweep looks 32 days ahead, and a
+        // reminder minutes before the start reaches nobody in time.
+        $minimum = CarbonInterval::minutes(5)->totalSeconds;
+        $maximum = CarbonInterval::days(31)->totalSeconds;
 
         foreach ($offsets as $offset) {
             if (! is_string($offset)) {
                 throw InvalidEventsConfigurationException::invalidDuration('events.reminders.offsets', $offset);
             }
 
-            self::duration($offset, 'events.reminders.offsets');
+            $seconds = self::duration($offset, 'events.reminders.offsets')->totalSeconds;
+
+            if ($seconds < $minimum || $seconds > $maximum) {
+                throw InvalidEventsConfigurationException::outOfRange('events.reminders.offsets', $offset, 'PT5M and P31D');
+            }
+
             $list[] = $offset;
         }
 
-        return array_values(array_unique($list));
+        $list = array_values(array_unique($list));
+
+        if (count($list) > EventInput::REMINDERS_MAX) {
+            throw InvalidEventsConfigurationException::tooMany('events.reminders.offsets', EventInput::REMINDERS_MAX);
+        }
+
+        return $list;
     }
 
     public static function reminderMaxLateness(): CarbonInterval

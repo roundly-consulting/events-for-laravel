@@ -183,6 +183,7 @@ final readonly class Doctor
                 EventsConfig::inviteeResource(), EventsConfig::actorResource(), EventsConfig::venueOwnerResource(),
             ],
             'payments' => fn (): object => $this->container->make(CollectsAdmissionPayment::class),
+            'reminders' => static fn (): array => [EventsConfig::reminderOffsets(), EventsConfig::reminderMaxLateness()],
         ];
 
         foreach ($checks as $check => $probe) {
