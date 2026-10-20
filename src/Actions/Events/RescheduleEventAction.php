@@ -29,9 +29,10 @@ use RoundlyConsulting\Events\Support\SeatBook;
  * instant). Without a new end the event keeps its length — exactly, in seconds (an all-day event:
  * its number of days).
  *
- * Atomic: under the event's lock it writes the new times, keeps the originally announced start
- * in `previous_starts_at` (the first reschedule only, per schema.org), then applies the lifecycle's reschedule transition in the same transaction — a
- * denial rolls the times back. Every write of `ends_at` is an Eloquent save, so the automatic
+ * Atomic: under the event's lock (taken first: the phase read under it picks the path) it writes
+ * the new times, keeps the originally announced start in `previous_starts_at` (the first
+ * reschedule only, per schema.org), then applies the lifecycle's reschedule transition in the
+ * same transaction — a denial rolls the times back. Every write of `ends_at` is an Eloquent save, so the automatic
  * completion follows it. The doors time is cleared (an old one could lie outside the new
  * window); holds ending after an earlier new start end at it; seats freed meanwhile (say, while
  * postponed) go to the waitlist once the event is on again.
@@ -57,13 +58,17 @@ final readonly class RescheduleEventAction
         bool $system = false,
         bool $silent = false,
     ): Event {
-        if ($event->phase === EventPhase::Draft) {
-            return $this->editDraft($event, $startsAt, $endsAt, $actor, $silent);
-        }
+        return EventTransaction::run($event, function () use ($event, $actor, $system, $reason, $silent, $startsAt, $endsAt): Event {
+            // The path follows the phase read under the event's lock: a publish that committed
+            // meanwhile makes this a real reschedule, never a quiet draft edit.
+            LockedEvent::lock($event);
 
-        $transition = EventStates::transitionFor(EventVerb::Reschedule);
+            if ($event->phase === EventPhase::Draft) {
+                return $this->editDraft($event, $startsAt, $endsAt, $actor, $silent);
+            }
 
-        return EventTransaction::run($event, function () use ($event, $transition, $actor, $system, $reason, $silent, $startsAt, $endsAt): Event {
+            $transition = EventStates::transitionFor(EventVerb::Reschedule);
+
             EventTransitions::apply(
                 $event,
                 $transition,

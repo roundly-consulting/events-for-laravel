@@ -21,6 +21,7 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 - `reschedule()` without a new end, and `update()` with a new start only, keep the event's exact length: a 28-day event moved into a 30-day month no longer grows to 30 days, and an event of the longest allowed length (`events.schedule.max_duration`) can be moved.
 - `events.schedule.max_duration` is measured in the event's own timezone (or in elapsed time, whichever allows more): a 31-day all-day or timed event across the autumn DST switch is no longer refused as too long.
 - Rescheduling a draft clears its doors time, as rescheduling an announced event does: the old one no longer lingers a month before the new start (in JSON-LD `doorTime`) or blocks a later length change.
+- `reschedule()` locks the event before choosing between a draft edit and an announced reschedule: a stale draft model, or a publish committed by another request meanwhile, no longer turns a real reschedule into a quiet edit (no `EventRescheduled`, no notices, no `previous_starts_at`).
 
 ## 1.0.0 - 2026-10-20
 

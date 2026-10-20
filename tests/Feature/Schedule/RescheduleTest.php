@@ -2,7 +2,11 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Facades\Event as EventBus;
 use RoundlyConsulting\Events\DataTransferObjects\UpdateEventData;
+use RoundlyConsulting\Events\Enums\EventPhase;
+use RoundlyConsulting\Events\Events\EventRescheduled;
+use RoundlyConsulting\Events\Events\EventUpdated;
 use RoundlyConsulting\Events\Exceptions\InvalidEventScheduleException;
 use RoundlyConsulting\Events\Facades\Events;
 use RoundlyConsulting\Events\Models\Event;
@@ -75,4 +79,21 @@ test('a_draft_reschedule_clears_the_doors_time', function (): void {
     // So a later edit of the length is not refused over a doors time nobody set for this date.
     Events::for($draft)->update(new UpdateEventData(duration: '3 hours'));
     expect($draft->fresh()?->ends_at->toIso8601String())->toBe('2027-03-10T23:00:00+00:00');
+});
+
+test('a_reschedule_branches_on_the_locked_phase', function (): void {
+    EventBus::fake([EventRescheduled::class, EventUpdated::class]);
+    $draft = Events::make('Gig')->organizedBy(User::factory()->create())->timezone('UTC')
+        ->startsAt('2027-02-10 20:00')->duration('2 hours')->create();
+    $stale = Event::query()->findOrFail($draft->getKey());
+
+    // Published meanwhile through another copy of the model: the stale one still reads "draft".
+    Events::for($draft)->publish();
+    Events::for($stale)->reschedule('2027-03-10 20:00');
+
+    $event = $draft->fresh();
+    expect($event?->phase)->toBe(EventPhase::Rescheduled)
+        ->and($event?->previous_starts_at?->toIso8601String())->toBe('2027-02-10T20:00:00+00:00');
+    EventBus::assertDispatchedTimes(EventRescheduled::class, 1);
+    EventBus::assertNotDispatched(EventUpdated::class);
 });
