@@ -79,8 +79,9 @@ final readonly class UpdateEventAction
                 $this->holds->execute(SeatBook::open($event));
             }
 
-            // More room (a higher or no capacity) lets the waitlist move up.
-            if (in_array('capacity', $changed, true)) {
+            // More room (a higher or no capacity), or automatic promotion switched back on, lets
+            // the waitlist move up.
+            if (in_array('capacity', $changed, true) || (in_array('waitlist_auto_promote', $changed, true) && $event->waitlist_auto_promote)) {
                 $this->promote->execute(SeatBook::open($event));
             }
 

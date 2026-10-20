@@ -8,6 +8,7 @@ use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Database\Eloquent\Model;
+use RoundlyConsulting\Events\Actions\Internal\AutoPromoteAction;
 use RoundlyConsulting\Events\Actions\Internal\CapHoldsAtStartAction;
 use RoundlyConsulting\Events\Actions\Internal\ResolveScheduleAction;
 use RoundlyConsulting\Events\DataTransferObjects\ResolvedSchedule;
@@ -30,7 +31,8 @@ use RoundlyConsulting\Events\Support\SeatBook;
  * in `previous_starts_at` (the first reschedule only, per schema.org), then applies the lifecycle's reschedule transition in the same transaction — a
  * denial rolls the times back. Every write of `ends_at` is an Eloquent save, so the automatic
  * completion follows it. The doors time is cleared (an old one could lie outside the new
- * window); holds ending after an earlier new start end at it.
+ * window); holds ending after an earlier new start end at it; seats freed meanwhile (say, while
+ * postponed) go to the waitlist once the event is on again.
  *
  * A draft has announced nothing: it is just edited, no transition is applied.
  */
@@ -39,6 +41,7 @@ final readonly class RescheduleEventAction
     public function __construct(
         private ResolveScheduleAction $schedules,
         private CapHoldsAtStartAction $holds,
+        private AutoPromoteAction $promote,
         private Dispatcher $events,
     ) {}
 
@@ -57,30 +60,35 @@ final readonly class RescheduleEventAction
 
         $transition = EventStates::transitionFor(EventVerb::Reschedule);
 
-        EventTransitions::apply(
-            $event,
-            $transition,
-            $actor,
-            $system,
-            $reason,
-            silent: $silent,
-            reschedule: true,
-            before: function (Event $locked) use ($startsAt, $endsAt): void {
-                $schedule = $this->resolve($locked, $startsAt, $endsAt);
+        return EventTransaction::run($event, function () use ($event, $transition, $actor, $system, $reason, $silent, $startsAt, $endsAt): Event {
+            EventTransitions::apply(
+                $event,
+                $transition,
+                $actor,
+                $system,
+                $reason,
+                silent: $silent,
+                reschedule: true,
+                before: function (Event $locked) use ($startsAt, $endsAt): void {
+                    $schedule = $this->resolve($locked, $startsAt, $endsAt);
 
-                if ($locked->previous_starts_at === null) {
-                    $locked->previous_starts_at = $locked->starts_at;
-                }
+                    if ($locked->previous_starts_at === null) {
+                        $locked->previous_starts_at = $locked->starts_at;
+                    }
 
-                $locked->starts_at = $schedule->startsAt;
-                $locked->ends_at = $schedule->endsAt;
-                $locked->doors_open_at = null;
-                $locked->save();
-                $this->holds->execute(SeatBook::open($locked));
-            },
-        );
+                    $locked->starts_at = $schedule->startsAt;
+                    $locked->ends_at = $schedule->endsAt;
+                    $locked->doors_open_at = null;
+                    $locked->save();
+                    $this->holds->execute(SeatBook::open($locked));
+                },
+            );
 
-        return $event;
+            // Back on (a postponed event's freed seats waited for this).
+            $this->promote->execute(SeatBook::open($event));
+
+            return $event;
+        });
     }
 
     private function editDraft(Event $event, CarbonInterface|string $startsAt, CarbonInterface|string|null $endsAt, ?Model $actor, bool $silent): Event

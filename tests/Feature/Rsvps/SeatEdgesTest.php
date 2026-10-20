@@ -158,6 +158,39 @@ test('a_repeated_going_answer_saves_a_changed_note', function (): void {
         ->and($queued->fresh()?->note)->toBe('Wheelchair, two seats');
 });
 
+test('seats_freed_while_postponed_are_offered_after_the_reschedule', function (): void {
+    $event = Scenarios::event(capacity: 1);
+    $leaving = User::factory()->create();
+    $waiting = User::factory()->create();
+    Events::for($event)->rsvp($leaving)->going();
+    expect(Events::for($event)->rsvp($waiting)->going()->status)->toBe(RsvpStatus::Waitlisted);
+
+    Events::for($event)->postpone('Venue flooded');
+    Events::for($event)->rsvp($leaving)->notGoing();
+    expect($waiting->rsvpFor($event)?->status)->toBe(RsvpStatus::Waitlisted);
+
+    Events::for($event)->reschedule('2027-03-10 20:00');
+
+    expect($waiting->rsvpFor($event)?->status)->toBe(RsvpStatus::Going)
+        ->and($event->fresh()?->seats_taken)->toBe(1);
+});
+
+test('switching_automatic_promotion_back_on_fills_free_seats', function (): void {
+    $event = Scenarios::event(capacity: 1);
+    $leaving = User::factory()->create();
+    $waiting = User::factory()->create();
+    Events::for($event)->rsvp($leaving)->going();
+    Events::for($event)->rsvp($waiting)->going();
+
+    Events::for($event)->update(new UpdateEventData(waitlistAutoPromote: false));
+    Events::for($event)->rsvp($leaving)->notGoing();
+    expect($waiting->rsvpFor($event)?->status)->toBe(RsvpStatus::Waitlisted);
+
+    Events::for($event)->update(new UpdateEventData(waitlistAutoPromote: true));
+
+    expect($waiting->rsvpFor($event)?->status)->toBe(RsvpStatus::Going);
+});
+
 test('manager_changes_release_lapsed_holds_first', function (): void {
     $event = Scenarios::event(capacity: 2, maxGuests: 1);
     Events::for($event)->tiers()->add('Supporter', price: Money::ofMajor('15', 'EUR'), capacity: 1, key: 'supporter');
