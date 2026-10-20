@@ -115,3 +115,20 @@ test('an_impossible_local_date_scope_is_refused', function (): void {
     expect(fn () => Event::query()->onLocalDate('2027-02-30')->get())->toThrow(InvalidEventScheduleException::class)
         ->and(Event::query()->onLocalDate('2027-02-10')->count())->toBe(0);
 });
+
+test('organizer_filters_are_no_existence_oracle', function (): void {
+    Scenarios::event(organizer: $this->organizer);
+    $missing = 987654321;
+
+    $known = $this->get("/api/events/feed.ics?organizer=user:{$this->organizer->getKey()}");
+    $unknown = $this->get("/api/events/feed.ics?organizer=user:{$missing}");
+    expect($unknown->status())->toBe($known->status())->toBe(200)
+        ->and($unknown->getContent())->not->toContain('BEGIN:VEVENT');
+
+    $this->getJson("/api/events?filter[organizer]=user:{$missing}")->assertOk()->assertJsonCount(0, 'data');
+    $this->getJson("/api/events?filter[organizer]=user:{$this->organizer->getKey()}")->assertOk()->assertJsonCount(1, 'data');
+
+    // A malformed reference or an unknown alias is still refused, whatever exists.
+    $this->get('/api/events/feed.ics?organizer=user:abc')->assertStatus(422);
+    $this->getJson('/api/events?filter[organizer]=robot:1')->assertStatus(422);
+});

@@ -34,7 +34,7 @@ final class FeedRequest extends EventsRequest
 
         if (isset($data['organizer'])) {
             [$alias, $key] = MorphAliases::split((string) $data['organizer']);
-            $organizer = MorphAliases::organizer($alias, $key);
+            $organizer = MorphAliases::organizerReference($alias, $key);
         }
 
         return new EventFeedQuery(

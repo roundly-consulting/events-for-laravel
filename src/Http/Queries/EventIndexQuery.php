@@ -71,7 +71,7 @@ final class EventIndexQuery
                 AllowedFilter::custom('labels', TagsFilter::all(EventTagType::Label)),
                 AllowedFilter::callback('organizer', static function (Builder $query, mixed $value): void {
                     [$alias, $key] = MorphAliases::split(self::joined($value));
-                    $query->scopes(['organizedBy' => [MorphAliases::organizer($alias, $key)]]);
+                    $query->scopes(['organizedBy' => [MorphAliases::organizerReference($alias, $key)]]);
                 }),
                 AllowedFilter::callback('venue', static function (Builder $query, mixed $value): void {
                     $ids = array_map(static fn (mixed $id): int => is_numeric($id) && (int) $id > 0 ? (int) $id : throw InvalidEventQueryException::invalidValue('venue'), (array) $value);
