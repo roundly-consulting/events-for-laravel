@@ -150,3 +150,23 @@ test('an_empty_manual_promotion_satisfies_one_of_the_pair', function (): void {
     $fake->assertPromoted($event);
     expect(fn () => $fake->assertNothingPromoted())->toThrow(ExpectationFailedException::class);
 });
+
+test('the_fake_records_nothing_an_outer_transaction_rolled_back', function (): void {
+    $fake = Events::fake();
+    $event = Scenarios::event(capacity: 10);
+
+    try {
+        DB::transaction(static function () use ($event): void {
+            Events::for($event)->update(new UpdateEventData(title: 'Renamed'));
+
+            throw new RuntimeException('host rolls back');
+        });
+    } catch (RuntimeException) {
+    }
+
+    $fake->assertNothingUpdated();
+    expect($event->fresh()?->title)->toBe('Concert');
+
+    DB::transaction(static fn () => Events::for($event)->update(new UpdateEventData(title: 'Renamed')));
+    $fake->assertUpdated($event, ['title']);
+});

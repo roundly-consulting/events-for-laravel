@@ -26,7 +26,8 @@ use RoundlyConsulting\Tags\Models\Tag;
  * A recording, still-performing manager, installed by `Events::fake()`. Every operation runs for
  * real (rows, seats, events, policies) and each successful one is recorded — however it was
  * called: the facade, an injected manager, a handle, a sub-accessor, a builder or a model trait.
- * A call that throws records nothing.
+ * A call that throws records nothing, and neither does one an outer transaction rolls back: inside
+ * a transaction the record is written when it commits.
  *
  * Assertions pair up: `assert<Verb>()` with `assertNothing<Verb>()`, `assert<Noun><Verb>()` with
  * `assertNo<Noun><Verb>()` — one pair for every {@see EventOperation} — plus the generic
@@ -51,8 +52,15 @@ final class EventsFake extends EventsManager
     public function perform(EventOperation $operation, string $action, Closure $execute, array $context = []): mixed
     {
         $result = parent::perform($operation, $action, $execute, $context);
+        $record = new RecordedEventOperation($operation, $context, $result);
 
-        $this->recorded[] = new RecordedEventOperation($operation, $context, $result);
+        $model = EventModels::event();
+
+        // Right away outside a transaction; at the commit inside one (never after a rollback).
+        $this->container()->make('db')->connection((new $model)->getConnectionName())
+            ->afterCommit(function () use ($record): void {
+                $this->recorded[] = $record;
+            });
 
         return $result;
     }
