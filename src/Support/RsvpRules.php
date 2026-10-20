@@ -111,8 +111,10 @@ final class RsvpRules
      * The ticket type an answer takes: the one named (a model, id or key), or — when it names
      * none — the single visible one on sale. An event without ticket types admits for free.
      * Hidden ticket types are assignable by managers only, and look unknown to everyone else.
+     * The ticket type the RSVP already holds (`$holding`) is the attendee's own: it is never
+     * re-checked as if newly chosen (hidden, sale over).
      */
-    public static function tier(SeatBook $book, AdmissionTier|int|string|null $tier, bool $manager, bool $keepNone = false): ?AdmissionTier
+    public static function tier(SeatBook $book, AdmissionTier|int|string|null $tier, bool $manager, bool $keepNone = false, ?int $holding = null): ?AdmissionTier
     {
         // An RSVP from before the event had ticket types keeps holding none.
         if ($keepNone) {
@@ -138,6 +140,10 @@ final class RsvpRules
             is_int($tier) => $book->tier($tier),
             default => array_values(array_filter($book->tiers(), static fn (AdmissionTier $candidate): bool => $candidate->key === $tier))[0] ?? null,
         };
+
+        if ($found !== null && $holding !== null && (int) $found->getKey() === $holding) {
+            return $found;
+        }
 
         if ($found === null || ($found->hidden && ! $manager)) {
             throw TierNotFoundException::missing();

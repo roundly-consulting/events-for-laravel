@@ -98,11 +98,13 @@ final readonly class RespondToEventAction
         $current = $rsvp->exists ? $rsvp->status : null;
         $currentTier = $rsvp->exists && $rsvp->tier_id !== null ? (int) $rsvp->tier_id : null;
         $currentParty = $rsvp->exists ? $rsvp->partySize() : 0;
+        $holds = in_array($current, [RsvpStatus::Going, RsvpStatus::Held, RsvpStatus::Waitlisted], true);
         // An answer that names no ticket type keeps what the RSVP holds — none included (a seat
-        // from before the event had ticket types).
-        $keepsTier = $request->tier === null && in_array($current, [RsvpStatus::Going, RsvpStatus::Held, RsvpStatus::Waitlisted], true);
+        // from before the event had ticket types). The ticket type it holds is never re-checked
+        // as if newly chosen: its sale may be over, a manager may have given a hidden one.
+        $keepsTier = $request->tier === null && $holds;
 
-        $tier = RsvpRules::tier($book, $keepsTier ? $currentTier : $request->tier, $manager, keepNone: $keepsTier && $currentTier === null);
+        $tier = RsvpRules::tier($book, $keepsTier ? $currentTier : $request->tier, $manager, keepNone: $keepsTier && $currentTier === null, holding: $holds ? $currentTier : null);
         RsvpRules::assertParty($book->event, $tier, $request->guests);
 
         $tierId = $tier === null ? null : (int) $tier->getKey();
