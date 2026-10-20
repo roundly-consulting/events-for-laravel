@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace RoundlyConsulting\Events\Listeners;
 
 use Illuminate\Database\Eloquent\Model;
+use RoundlyConsulting\Events\Actions\Internal\SendDraftInvitationsAction;
 use RoundlyConsulting\Events\Enums\EventPhase;
 use RoundlyConsulting\Events\Enums\RsvpStatus;
 use RoundlyConsulting\Events\Events\AttendeeConfirmed;
@@ -12,6 +13,7 @@ use RoundlyConsulting\Events\Events\AttendeePromoted;
 use RoundlyConsulting\Events\Events\EventCancelled;
 use RoundlyConsulting\Events\Events\EventMovedOnline;
 use RoundlyConsulting\Events\Events\EventPostponed;
+use RoundlyConsulting\Events\Events\EventPublished;
 use RoundlyConsulting\Events\Events\EventRescheduled;
 use RoundlyConsulting\Events\Events\EventUpdated;
 use RoundlyConsulting\Events\Events\InvitationSent;
@@ -32,15 +34,25 @@ final readonly class SendEventNotifications
 
     public function __construct(
         private Notifier $notifier,
+        private SendDraftInvitationsAction $drafts,
     ) {}
 
+    /**
+     * Nobody can open a draft: its invitations go out when it is published
+     * ({@see self::published()}).
+     */
     public function invited(InvitationSent $sent): void
     {
         $invitee = $sent->invitation->invitee;
 
-        if ($invitee instanceof Model) {
+        if ($invitee instanceof Model && $sent->invitation->event->phase !== EventPhase::Draft) {
             $this->notifier->send('invited', $sent->invitation->event, [$invitee], data: ['token' => $sent->token, 'message' => $sent->message]);
         }
+    }
+
+    public function published(EventPublished $published): void
+    {
+        $this->drafts->execute($published->event);
     }
 
     public function confirmed(AttendeeConfirmed $confirmed): void

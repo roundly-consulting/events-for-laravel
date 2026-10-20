@@ -65,3 +65,28 @@ test('invitation_links_stay_valid_while_postponed_and_die_at_the_start', functio
     expect(fn () => Events::invitations()->accept($late, by: $other))->toThrow(InvalidInvitationException::class)
         ->and(Events::invitations()->find($late))->toBeNull();
 });
+
+test('invitations_sent_on_a_draft_reach_the_invitee_on_publish', function (): void {
+    Notification::fake();
+    $draft = townHall(publish: false);
+    $guest = User::factory()->create();
+    $accepted = User::factory()->create();
+
+    $first = Events::for($draft)->invitations()->send($guest, message: 'Board only');
+    Events::for($draft)->invitations()->send($accepted);
+    EventInvitation::query()->where('invitee_id', $accepted->getKey())->update(['status' => InvitationStatus::Accepted->value, 'token_hash' => null]);
+
+    // Nobody can open a draft: nothing is sent yet.
+    Notification::assertNothingSent();
+
+    Events::for($draft)->publish();
+
+    Notification::assertSentTo($guest, EventInvitationNotification::class, static fn (EventInvitationNotification $notice): bool => $notice->data['message'] === 'Board only'
+        && is_string($notice->data['token']) && $notice->data['token'] !== $first->plainToken);
+    Notification::assertNotSentTo($accepted, EventInvitationNotification::class);
+
+    // The link from the publish notice works; the draft's token was replaced.
+    $sent = Notification::sent($guest, EventInvitationNotification::class)->first();
+    expect(fn () => Events::invitations()->accept((string) $first->plainToken, by: $guest))->toThrow(InvalidInvitationException::class)
+        ->and(Events::invitations()->accept((string) $sent?->data['token'], by: $guest)->status)->toBe(RsvpStatus::Going);
+});

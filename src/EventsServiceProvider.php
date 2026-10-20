@@ -23,6 +23,7 @@ use RoundlyConsulting\Events\Events\AttendeePromoted;
 use RoundlyConsulting\Events\Events\EventCancelled;
 use RoundlyConsulting\Events\Events\EventMovedOnline;
 use RoundlyConsulting\Events\Events\EventPostponed;
+use RoundlyConsulting\Events\Events\EventPublished;
 use RoundlyConsulting\Events\Events\EventRescheduled;
 use RoundlyConsulting\Events\Events\EventUpdated;
 use RoundlyConsulting\Events\Events\InvitationSent;
@@ -104,6 +105,7 @@ final class EventsServiceProvider extends PackageServiceProvider
         // Notices, after the commit (the domain events are ShouldDispatchAfterCommit).
         foreach ([
             InvitationSent::class => 'invited',
+            EventPublished::class => 'published',
             AttendeeConfirmed::class => 'confirmed',
             AttendeePromoted::class => 'promoted',
             EventUpdated::class => 'updated',
