@@ -31,9 +31,11 @@ use RoundlyConsulting\Events\Support\WallClock;
 /**
  * Changes an event: only the fields given. A new start on a published event is refused —
  * `reschedule()` keeps the announced date and tells attendees; repeating the current start is
- * not a new one. An end, a doors time or a
- * timezone change (instants kept, local dates recomputed) is an ordinary update; a time, venue
- * or online-link change raises the calendar `sequence`. A higher capacity lets the waitlist move up. Fires `EventUpdated` with the changed attributes, nothing when nothing changed.
+ * not a new one. An end, a doors time, an all-day event's last day (`allDayThrough` alone) or a
+ * timezone change is an ordinary update: a timed event keeps its instants, an all-day event its
+ * days. A start time turns an all-day event into a timed one. A time, venue or online-link
+ * change raises the calendar `sequence`. A higher capacity lets the waitlist move up. Fires
+ * `EventUpdated` with the changed attributes, nothing when nothing changed.
  */
 final readonly class UpdateEventAction
 {
@@ -152,11 +154,14 @@ final readonly class UpdateEventAction
 
     private function schedule(Event $event, UpdateEventData $data): void
     {
+        $zoneChanged = false;
+
         if (! $data->timezone instanceof NotGiven) {
             if (! Timezones::isValid($data->timezone)) {
                 throw InvalidEventScheduleException::invalidTimezone($data->timezone);
             }
 
+            $zoneChanged = $data->timezone !== $event->timezone;
             $event->timezone = $data->timezone;
         }
 
@@ -169,10 +174,27 @@ final readonly class UpdateEventAction
             return;
         }
 
-        $touched = ! $data->startsAt instanceof NotGiven || ! $data->endsAt instanceof NotGiven
-            || ! $data->duration instanceof NotGiven || ! $data->doorsOpenAt instanceof NotGiven;
+        $timed = ! $data->startsAt instanceof NotGiven || ! $data->endsAt instanceof NotGiven || ! $data->duration instanceof NotGiven;
 
-        if (! $touched) {
+        if ($event->all_day && ! $timed) {
+            if (! $data->doorsOpenAt instanceof NotGiven && $data->doorsOpenAt !== null) {
+                throw InvalidEventScheduleException::doorsOnAllDay();
+            }
+
+            // An all-day event keeps its days: a new last day, or the same days in a new zone.
+            if (! $data->allDayThrough instanceof NotGiven || $zoneChanged) {
+                $through = $data->allDayThrough instanceof NotGiven ? $event->ends_on : $data->allDayThrough;
+                $this->apply($event, $this->schedules->execute(new ScheduleData(allDayFrom: (string) $event->starts_on, allDayThrough: $through), $timezone));
+            }
+
+            return;
+        }
+
+        if (! $data->allDayThrough instanceof NotGiven) {
+            throw InvalidEventScheduleException::notAllDay();
+        }
+
+        if (! $timed && $data->doorsOpenAt instanceof NotGiven) {
             return;
         }
 
@@ -188,7 +210,8 @@ final readonly class UpdateEventAction
             default => $event->doors_open_at,
         };
 
-        $this->apply($event, $this->schedules->checked(new ResolvedSchedule($timezone, $starts, $ends, $event->all_day, $event->all_day ? null : $doors)));
+        // A start, end or duration makes the event timed (an all-day draft given a time included).
+        $this->apply($event, $this->schedules->checked(new ResolvedSchedule($timezone, $starts, $ends, false, $doors)));
     }
 
     private function settings(Event $event, UpdateEventData $data): void

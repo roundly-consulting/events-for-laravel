@@ -16,8 +16,10 @@ use RoundlyConsulting\Events\Support\NotGiven;
  * An event change: only the fields given change (`NotGiven` is the default; `null` clears).
  *
  * A new start (`startsAt`, `allDayFrom`) is allowed on a draft only: a published event gets a
- * new date through `reschedule()`, which keeps the announced one and tells attendees. An end, a
- * doors time or a timezone change (instants kept) is an ordinary update.
+ * new date through `reschedule()`, which keeps the announced one and tells attendees. Repeating
+ * the current start is not a new one. An end, a doors time, an all-day event's last day
+ * (`allDayThrough` alone) or a timezone change is an ordinary update: a timed event keeps its
+ * instants, an all-day event its days.
  */
 final readonly class UpdateEventData
 {
@@ -54,7 +56,7 @@ final readonly class UpdateEventData
     ) {}
 
     /**
-     * Whether the change moves the start (or the all-day range).
+     * Whether the change names a start (or the all-day range) — the same or a new one.
      */
     public function movesStart(): bool
     {

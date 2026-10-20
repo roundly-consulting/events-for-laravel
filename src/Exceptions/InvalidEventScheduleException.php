@@ -59,6 +59,11 @@ final class InvalidEventScheduleException extends EventsException
         return self::make('invalid_schedule', 422, [], 'schedule_invalid_day_range');
     }
 
+    public static function notAllDay(): self
+    {
+        return self::make('invalid_schedule', 422, [], 'schedule_not_all_day');
+    }
+
     public static function invalidRsvpWindow(): self
     {
         return self::make('invalid_schedule', 422, [], 'schedule_invalid_rsvp_window');

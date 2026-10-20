@@ -36,6 +36,7 @@ return [
     'schedule_invalid_duration' => 'Trvanie „:value“ sa nepodarilo prečítať.',
     'schedule_nonexistent_local_time' => 'Čas :time v pásme :timezone neexistuje (hodiny ho preskočia).',
     'schedule_invalid_day_range' => 'Posledný deň nesmie byť pred prvým dňom.',
+    'schedule_not_all_day' => 'Posledný deň má len celodenné podujatie.',
     'schedule_invalid_rsvp_window' => 'Prihlasovanie sa musí otvoriť skôr, ako sa uzavrie.',
 
     'venue_name_required' => 'Miesto konania musí mať názov.',
