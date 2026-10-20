@@ -123,6 +123,26 @@ test('a_waitlisted_repeat_after_the_sale_keeps_the_place', function (): void {
         ->and($again->waitlisted_at?->toIso8601String())->toBe($waiting->waitlisted_at?->toIso8601String());
 });
 
+test('a_checked_in_party_cannot_shrink_below_who_came_in', function (): void {
+    $event = Scenarios::event(capacity: 3, maxGuests: 2);
+    $user = User::factory()->create();
+    $waiting = User::factory()->create();
+    $rsvp = Events::for($event)->rsvp($user)->going(guests: 2);
+    expect(Events::for($event)->rsvp($waiting)->going()->status)->toBe(RsvpStatus::Waitlisted);
+
+    Scenarios::minutesBeforeStart($event, 90);
+    Events::for($event)->by($event->organizer)->checkIn((string) $rsvp->fresh()?->checkInCode(), guests: 1);
+
+    expect(fn () => Events::for($event)->rsvp($user)->by($user)->going(guests: 0))->toThrow(InvalidRsvpTransitionException::class);
+
+    // Down to the people already inside is fine; the freed seat goes to the waitlist.
+    $fewer = Events::for($event)->rsvp($user)->by($user)->going(guests: 1);
+
+    expect($fewer->guests)->toBe(1)
+        ->and($fewer->checked_in_guests)->toBe(1)
+        ->and($waiting->rsvpFor($event)?->status)->toBe(RsvpStatus::Going);
+});
+
 test('a_repeated_going_answer_saves_a_changed_note', function (): void {
     $event = Scenarios::event(capacity: 1);
     $attendee = User::factory()->create();

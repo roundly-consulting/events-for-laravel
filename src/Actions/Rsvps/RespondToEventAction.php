@@ -131,6 +131,11 @@ final readonly class RespondToEventAction
                 throw InvalidRsvpTransitionException::paidPartyChange();
             }
 
+            if ($current === RsvpStatus::Going && $rsvp->isCheckedIn() && $request->guests < (int) $rsvp->checked_in_guests) {
+                // The people already through the door keep their seats.
+                throw InvalidRsvpTransitionException::checkedInParty();
+            }
+
             if (! $book->fitsReplacing($party, $tierId, $currentParty, $currentTier)) {
                 throw SeatErrors::noRoom($book, $party, $currentParty);
             }
