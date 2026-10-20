@@ -218,3 +218,23 @@ test('manager_changes_release_lapsed_holds_first', function (): void {
         ->and($moved->status)->toBe(RsvpStatus::Going)
         ->and($lapsing->rsvpFor($event)?->status)->toBe(RsvpStatus::Expired);
 });
+
+test('an_unchanged_manager_change_still_moves_the_waitlist_after_a_lapsed_hold', function (string $change): void {
+    $event = Scenarios::event(capacity: 2);
+    Events::for($event)->tiers()->add('Supporter', price: Money::ofMajor('15', 'EUR'), key: 'supporter');
+    Events::for($event)->tiers()->add('Free', key: 'free');
+    $guest = User::factory()->create();
+    $waiting = User::factory()->create();
+
+    Events::for($event)->rsvp($guest)->going(tier: 'free');
+    Events::for($event)->rsvp(User::factory()->create())->going(tier: 'supporter');   // held until 12:30
+    Events::for($event)->rsvp($waiting)->going(tier: 'free');
+    Scenarios::freeze('2027-01-01 13:00:00');
+
+    // A change that changes nothing still releases the lapsed hold, and its seat moves on.
+    $change === 'guests'
+        ? Events::for($event)->attendees()->changeGuests($guest, 0)
+        : Events::for($event)->attendees()->changeTier($guest, 'free');
+
+    expect($waiting->rsvpFor($event)?->status)->toBe(RsvpStatus::Going);
+})->with(['guests', 'tier']);

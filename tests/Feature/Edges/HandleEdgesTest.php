@@ -17,6 +17,7 @@ use RoundlyConsulting\Events\Events\EventUpdated;
 use RoundlyConsulting\Events\Exceptions\RsvpNotFoundException;
 use RoundlyConsulting\Events\Facades\Events;
 use RoundlyConsulting\Events\Models\Venue;
+use RoundlyConsulting\Events\Tests\Fixtures\Models\Guest;
 use RoundlyConsulting\Events\Tests\Fixtures\Models\Team;
 use RoundlyConsulting\Events\Tests\Fixtures\Models\User;
 use RoundlyConsulting\Events\Tests\Support\Scenarios;
@@ -130,6 +131,15 @@ test('a_soft_deleted_attendee_scan_is_all_or_nothing', function (): void {
     DB::table($gone->getTable())->where('id', $gone->getKey())->delete();
     expect(fn () => Events::for($event)->by($event->organizer)->checkIn($orphanCode))->toThrow(RsvpNotFoundException::class)
         ->and($orphan->fresh()?->checked_in_at)->toBeNull();
+
+    // The same for a guest model that cannot be soft-deleted.
+    $guest = Guest::factory()->create();
+    $guestRsvp = Events::for($event)->attendees()->add($guest);
+    $guestCode = (string) $guestRsvp->checkInCode();
+    DB::table($guest->getTable())->where('id', $guest->getKey())->delete();
+
+    expect(fn () => Events::for($event)->by($event->organizer)->checkIn($guestCode))->toThrow(RsvpNotFoundException::class)
+        ->and($guestRsvp->fresh()?->checked_in_at)->toBeNull();
 });
 
 test('an_empty_manual_promotion_satisfies_one_of_the_pair', function (): void {
