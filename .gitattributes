@@ -10,5 +10,6 @@
 /.editorconfig      export-ignore
 /pint.json          export-ignore
 /phpstan.neon.dist  export-ignore
+/testbench.yaml.dist export-ignore
 /bin                export-ignore
 /art                export-ignore
