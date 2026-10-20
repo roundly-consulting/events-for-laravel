@@ -146,3 +146,22 @@ test('a_partial_address_patch_keeps_the_other_fields', function (): void {
     $this->actingAs($this->organizer)->patchJson("/api/event-venues/{$venue->getKey()}", ['street' => null])->assertOk();
     expect([$venue->fresh()?->street, $venue->fresh()?->city])->toBe([null, 'Košice']);
 });
+
+test('a_venue_patch_never_ignores_owner_shared_or_geocode', function (): void {
+    $team = Team::factory()->create();
+    $team->members()->attach($this->organizer);
+    $venue = Events::venues()->make('Blue Note')->ownedBy($this->organizer)->timezone('Europe/Bratislava')
+        ->address(street: 'Hlavná 1', city: 'Bratislava', country: 'SK')->create();
+    $uri = "/api/event-venues/{$venue->getKey()}";
+
+    $this->actingAs($this->organizer)->patchJson($uri, ['owner' => ['type' => 'team', 'id' => $team->getKey()]])->assertStatus(422);
+    $this->actingAs($this->organizer)->patchJson($uri, ['shared' => true])->assertStatus(422);
+    $this->actingAs($this->organizer)->patchJson($uri, ['geocode' => true, 'coordinates' => ['lat' => 1, 'lng' => 2]])->assertStatus(422);
+    expect($venue->fresh()?->owner_id)->toBe($this->organizer->getKey());
+
+    // geocode: true looks the changed address up, as the geocode route does.
+    Geolocation::fake()->seed('Hlavná 1, Košice, SK', new Location('Somewhere', 'Hlavná 1', 'Košice', 'SK', 48.7, 21.2, GeolocationType::Geolocation));
+    $this->actingAs($this->organizer)->patchJson($uri, ['city' => 'Košice', 'geocode' => true])->assertOk();
+
+    expect($venue->fresh()?->city)->toBe('Košice')->and($venue->fresh()?->coordinates?->latitude)->toBe(48.7);
+});

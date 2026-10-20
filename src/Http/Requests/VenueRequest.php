@@ -15,7 +15,9 @@ use RoundlyConsulting\Geolocation\Rules\CoordinatesRule;
 /**
  * A venue: create (`POST`) or change (`PATCH`, only the fields sent — each address part on its
  * own). A new venue is owned by the caller unless the body names an `owner` (who must allow the
- * caller) or asks for a `shared` one (admins and the `shared_venues` ability).
+ * caller) or asks for a `shared` one (admins and the `shared_venues` ability); ownership never
+ * changes on `PATCH` (422). `geocode: true` looks the coordinates up — on `PATCH` after the change,
+ * as `POST …/geocode` does.
  *
  * @internal
  */
@@ -28,7 +30,8 @@ final class VenueRequest extends EventsRequest
      */
     public function rules(): array
     {
-        $sometimes = $this->isMethod('POST') ? [] : ['sometimes'];
+        $create = $this->isMethod('POST');
+        $sometimes = $create ? [] : ['sometimes'];
 
         return [
             'name' => [...$sometimes, 'required', self::text(200)],
@@ -41,9 +44,8 @@ final class VenueRequest extends EventsRequest
             'coordinates' => ['sometimes', 'nullable', new CoordinatesRule],
             'timezone' => ['sometimes', 'timezone:all'],
             'capacity' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:10000000'],
-            ...self::reference('owner'),
-            'shared' => ['sometimes', 'boolean', 'prohibits:owner'],
-            'geocode' => ['sometimes', 'boolean'],
+            ...($create ? [...self::reference('owner'), 'shared' => ['sometimes', 'boolean', 'prohibits:owner']] : ['owner' => ['prohibited'], 'shared' => ['prohibited']]),
+            'geocode' => ['sometimes', 'boolean', ...($create ? [] : ['prohibits:coordinates'])],
         ];
     }
 
@@ -80,6 +82,14 @@ final class VenueRequest extends EventsRequest
             timezone: $given('timezone') ? (string) $data['timezone'] : NotGiven::Value,
             capacity: $given('capacity') ? ($data['capacity'] === null ? null : (int) $data['capacity']) : NotGiven::Value,
         );
+    }
+
+    /**
+     * Whether the change asks for a coordinates lookup.
+     */
+    public function geocodes(): bool
+    {
+        return (bool) $this->validated('geocode', false);
     }
 
     /**

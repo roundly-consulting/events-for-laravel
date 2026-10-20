@@ -61,6 +61,10 @@ final class VenueController extends Controller
         $model = $this->venue($venue);
         $updated = $venues->update($model, $request->toUpdate($model));
 
+        if ($request->geocodes()) {
+            $updated = $venues->geocode($updated, force: true);
+        }
+
         return new JsonResponse(['data' => (new VenueResource($updated))->resolve($request)]);
     }
 
