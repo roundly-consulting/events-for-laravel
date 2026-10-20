@@ -19,6 +19,7 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 - Read routes recognise a user of the guards `events.routes.auth_middleware` names (`auth:sanctum` tokens, say): such a caller no longer reads as a guest (private events they were invited to, their own RSVP, `filter[mine]`, the online link). Guests are still allowed. If you published `routes/events.php`, add `RoundlyConsulting\Events\Http\Middleware\UseConfiguredGuard` to its outer group.
 - A ticket type price with an explicit `currency` and more decimals than that currency has (`15.999` EUR, `15.5` JPY) is a 422 `invalid_tier` on every endpoint that takes one, instead of an HTTP 500.
 - `reschedule()` without a new end, and `update()` with a new start only, keep the event's exact length: a 28-day event moved into a 30-day month no longer grows to 30 days, and an event of the longest allowed length (`events.schedule.max_duration`) can be moved.
+- `events.schedule.max_duration` is measured in the event's own timezone (or in elapsed time, whichever allows more): a 31-day all-day or timed event across the autumn DST switch is no longer refused as too long.
 
 ## 1.0.0 - 2026-10-20
 

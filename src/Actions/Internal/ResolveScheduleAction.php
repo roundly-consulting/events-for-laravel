@@ -15,9 +15,10 @@ use RoundlyConsulting\Events\Support\WallClock;
 
 /**
  * Resolves a schedule in its timezone and checks every rule: an end after the start, at most
- * `events.schedule.max_duration` long, doors within 12 hours before the start, no doors time on
- * an all-day event. All-day events start at the local start of their first day and end at the
- * local start of the day after the last one (exclusive), so they survive a midnight DST switch.
+ * `events.schedule.max_duration` long (in local or elapsed time, whichever allows more), doors
+ * within 12 hours before the start, no doors time on an all-day event. All-day events start at
+ * the local start of their first day and end at the local start of the day after the last one
+ * (exclusive), so they survive a midnight DST switch.
  *
  * @internal
  */
@@ -57,8 +58,11 @@ final readonly class ResolveScheduleAction
         }
 
         $max = EventsConfig::maxDuration();
+        // On the event's own calendar or in elapsed time, whichever allows more: 31 days are 31
+        // local days across a DST switch, and an event kept at its exact length still moves.
+        $limit = $schedule->startsAt->setTimezone($schedule->timezone)->add($max)->max($schedule->startsAt->add($max));
 
-        if ($schedule->startsAt->add($max)->lessThan($schedule->endsAt)) {
+        if ($limit->lessThan($schedule->endsAt)) {
             throw InvalidEventScheduleException::tooLong($max->spec());
         }
 
