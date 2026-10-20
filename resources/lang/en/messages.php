@@ -35,6 +35,7 @@ return [
     'schedule_nonexistent_local_time' => 'The time :time does not exist in :timezone (the clocks skip it).',
     'schedule_invalid_day_range' => 'The last day must not come before the first day.',
     'schedule_not_all_day' => 'Only an all-day event has a last day.',
+    'schedule_in_the_past' => 'The new date has already passed.',
     'schedule_invalid_rsvp_window' => 'The RSVP window must open before it closes.',
 
     'venue_name_required' => 'The venue needs a name.',

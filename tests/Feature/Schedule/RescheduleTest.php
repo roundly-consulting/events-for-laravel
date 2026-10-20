@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Event as EventBus;
+use Illuminate\Support\Facades\Notification;
 use RoundlyConsulting\Events\DataTransferObjects\UpdateEventData;
 use RoundlyConsulting\Events\Enums\EventPhase;
 use RoundlyConsulting\Events\Events\EventRescheduled;
@@ -96,4 +97,29 @@ test('a_reschedule_branches_on_the_locked_phase', function (): void {
         ->and($event?->previous_starts_at?->toIso8601String())->toBe('2027-02-10T20:00:00+00:00');
     EventBus::assertDispatchedTimes(EventRescheduled::class, 1);
     EventBus::assertNotDispatched(EventUpdated::class);
+});
+
+test('a_reschedule_into_the_past_is_refused', function (): void {
+    $event = Scenarios::event(capacity: 5);
+    $going = User::factory()->create();
+    Events::for($event)->rsvp($going)->going();
+    Notification::fake();
+
+    // Now is 2027-01-01 12:00 UTC: an announced event cannot move to a date that has passed.
+    expect(fn () => Events::for($event)->reschedule('2026-06-01 20:00'))
+        ->toThrow(InvalidEventScheduleException::class, 'The new date has already passed.');
+
+    $event->refresh();
+    expect($event->phase)->toBe(EventPhase::Scheduled)
+        ->and($event->starts_at->toIso8601String())->toBe('2027-02-10T19:00:00+00:00')
+        ->and($event->previous_starts_at)->toBeNull();
+    Notification::assertNothingSent();
+
+    // An end still ahead (already started) is fine, and a draft has announced nothing.
+    Events::for($event)->reschedule('2027-01-01 11:00', '2027-01-01 15:00');
+    expect($event->fresh()?->phase)->toBe(EventPhase::Rescheduled);
+
+    $draft = Scenarios::event(publish: false);
+    Events::for($draft)->reschedule('2026-06-01 20:00');
+    expect($draft->fresh()?->starts_at->toIso8601String())->toBe('2026-06-01T18:00:00+00:00');
 });

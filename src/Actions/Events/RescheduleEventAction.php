@@ -17,7 +17,9 @@ use RoundlyConsulting\Events\DataTransferObjects\ScheduleData;
 use RoundlyConsulting\Events\Enums\EventPhase;
 use RoundlyConsulting\Events\Enums\EventVerb;
 use RoundlyConsulting\Events\Events\EventUpdated;
+use RoundlyConsulting\Events\Exceptions\InvalidEventScheduleException;
 use RoundlyConsulting\Events\Models\Event;
+use RoundlyConsulting\Events\Support\Clock;
 use RoundlyConsulting\Events\Support\EventStates;
 use RoundlyConsulting\Events\Support\EventTransaction;
 use RoundlyConsulting\Events\Support\EventTransitions;
@@ -27,7 +29,8 @@ use RoundlyConsulting\Events\Support\SeatBook;
 /**
  * Gives an event a new date. Times are read in the event's timezone (an instant stays an
  * instant). Without a new end the event keeps its length — exactly, in seconds (an all-day event:
- * its number of days).
+ * its number of days). An announced event's new date must not be over already (it may have
+ * started).
  *
  * Atomic: under the event's lock (taken first: the phase read under it picks the path) it writes
  * the new times, keeps the originally announced start in `previous_starts_at` (the first
@@ -79,6 +82,12 @@ final readonly class RescheduleEventAction
                 reschedule: true,
                 before: function (Event $locked) use ($startsAt, $endsAt): void {
                     $schedule = $this->resolve($locked, $startsAt, $endsAt);
+
+                    // Announced: a date that is already over would tell attendees about the past,
+                    // release every hold and complete at once.
+                    if (! $schedule->endsAt->greaterThan(Clock::now())) {
+                        throw InvalidEventScheduleException::inThePast();
+                    }
 
                     if ($locked->previous_starts_at === null) {
                         $locked->previous_starts_at = $locked->starts_at;

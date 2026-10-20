@@ -64,6 +64,14 @@ final class InvalidEventScheduleException extends EventsException
         return self::make('invalid_schedule', 422, [], 'schedule_not_all_day');
     }
 
+    /**
+     * An announced event rescheduled to a date that is already over.
+     */
+    public static function inThePast(): self
+    {
+        return self::make('invalid_schedule', 422, [], 'schedule_in_the_past');
+    }
+
     public static function invalidRsvpWindow(): self
     {
         return self::make('invalid_schedule', 422, [], 'schedule_invalid_rsvp_window');

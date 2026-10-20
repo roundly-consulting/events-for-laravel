@@ -22,6 +22,7 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 - `events.schedule.max_duration` is measured in the event's own timezone (or in elapsed time, whichever allows more): a 31-day all-day or timed event across the autumn DST switch is no longer refused as too long.
 - Rescheduling a draft clears its doors time, as rescheduling an announced event does: the old one no longer lingers a month before the new start (in JSON-LD `doorTime`) or blocks a later length change.
 - `reschedule()` locks the event before choosing between a draft edit and an announced reschedule: a stale draft model, or a publish committed by another request meanwhile, no longer turns a real reschedule into a quiet edit (no `EventRescheduled`, no notices, no `previous_starts_at`).
+- Rescheduling an announced event to a date that is already over is refused (`InvalidEventScheduleException`, 422 `invalid_schedule`) instead of telling attendees about a past date, releasing every hold and completing at once. A draft may still get any date, and a new date that has started but not ended is fine.
 
 ## 1.0.0 - 2026-10-20
 
