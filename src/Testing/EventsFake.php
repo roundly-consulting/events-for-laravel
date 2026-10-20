@@ -604,9 +604,17 @@ final class EventsFake extends EventsManager
             && $recorded->result instanceof Collection && $recorded->result->isNotEmpty());
     }
 
+    /**
+     * No promotion moved anyone up (a manual promotion over an empty queue moves nobody).
+     */
     public function assertNothingPromoted(): void
     {
-        $this->assertNotRecorded(EventOperation::PromoteWaitlist);
+        $moved = array_filter(
+            $this->recorded(EventOperation::PromoteWaitlist),
+            static fn (RecordedEventOperation $recorded): bool => $recorded->result instanceof Collection && $recorded->result->isNotEmpty(),
+        );
+
+        PHPUnit::assertSame([], $moved, sprintf('Expected nobody promoted, but %d promotion(s) moved someone up.', count($moved)));
     }
 
     public function assertPaymentConfirmed(?string $reference = null): void

@@ -131,3 +131,22 @@ test('a_soft_deleted_attendee_scan_is_all_or_nothing', function (): void {
     expect(fn () => Events::for($event)->by($event->organizer)->checkIn($orphanCode))->toThrow(RsvpNotFoundException::class)
         ->and($orphan->fresh()?->checked_in_at)->toBeNull();
 });
+
+test('an_empty_manual_promotion_satisfies_one_of_the_pair', function (): void {
+    $fake = Events::fake();
+    $event = Scenarios::event(capacity: 1);
+
+    Events::for($event)->waitlist()->promote();
+
+    $fake->assertNothingPromoted();
+    expect(fn () => $fake->assertPromoted($event))->toThrow(ExpectationFailedException::class);
+
+    Events::for($event)->rsvp(User::factory()->create())->going();
+    $waiting = User::factory()->create();
+    Events::for($event)->rsvp($waiting)->going();
+    Events::for($event)->update(new UpdateEventData(capacity: 2, waitlistAutoPromote: false));
+    Events::for($event)->waitlist()->promote();
+
+    $fake->assertPromoted($event);
+    expect(fn () => $fake->assertNothingPromoted())->toThrow(ExpectationFailedException::class);
+});
