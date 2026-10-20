@@ -4,13 +4,15 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Events\Notifications;
 
+use Illuminate\Contracts\Queue\ShouldBeEncrypted;
 use Illuminate\Support\Facades\App;
 use RoundlyConsulting\Events\Contracts\EventUrls;
 
 /**
- * An invitation to an event, with the accept link.
+ * An invitation to an event, with the accept link. Encrypted on the queue: the link's token is a
+ * bearer secret, and a failed job would otherwise keep it in `failed_jobs` in the clear.
  */
-class EventInvitationNotification extends EventNotification
+class EventInvitationNotification extends EventNotification implements ShouldBeEncrypted
 {
     public function type(): string
     {

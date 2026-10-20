@@ -128,3 +128,16 @@ test('an_answer_to_a_link_revoked_meanwhile_is_refused', function (): void {
     expect(fn () => Events::invitations()->accept($token, RsvpResponse::NotGoing, $invitee))->toThrow(InvalidInvitationException::class)
         ->and($invitee->rsvpFor($event))->toBeNull();
 });
+
+test('queued_invitation_notices_are_encrypted', function (): void {
+    Queue::fake();
+    $event = Scenarios::event(capacity: 10);
+    $invitee = User::factory()->create();
+
+    $token = (string) Events::for($event)->invitations()->send($invitee)->plainToken;
+    $jobs = Queue::pushed(SendQueuedNotifications::class);
+
+    expect($jobs)->toHaveCount(1)
+        ->and($jobs->first()->shouldBeEncrypted)->toBeTrue()
+        ->and($token)->not->toBe('');
+});
