@@ -18,4 +18,13 @@ final class SeatErrors
     {
         return $book->eventFitsReplacing($party, $currentParty) ? TierSoldOutException::soldOut() : EventFullException::full();
     }
+
+    /**
+     * The free seats belong to the waitlist: full for this party, of the event or of its ticket
+     * type.
+     */
+    public static function waitlistFirst(?int $tierId): EventFullException|TierSoldOutException
+    {
+        return $tierId === null ? EventFullException::full() : TierSoldOutException::soldOut();
+    }
 }

@@ -5,9 +5,11 @@ declare(strict_types=1);
 use RoundlyConsulting\Events\DataTransferObjects\UpdateEventData;
 use RoundlyConsulting\Events\DataTransferObjects\UpdateTierData;
 use RoundlyConsulting\Events\Enums\RsvpStatus;
+use RoundlyConsulting\Events\Exceptions\EventFullException;
 use RoundlyConsulting\Events\Exceptions\InvalidRsvpTransitionException;
 use RoundlyConsulting\Events\Exceptions\TierNotFoundException;
 use RoundlyConsulting\Events\Exceptions\TierNotOnSaleException;
+use RoundlyConsulting\Events\Exceptions\TierSoldOutException;
 use RoundlyConsulting\Events\Facades\Events;
 use RoundlyConsulting\Events\Tests\Fixtures\Models\User;
 use RoundlyConsulting\Events\Tests\Fixtures\Payments\FakePaymentCollector;
@@ -238,3 +240,46 @@ test('an_unchanged_manager_change_still_moves_the_waitlist_after_a_lapsed_hold',
 
     expect($waiting->rsvpFor($event)?->status)->toBe(RsvpStatus::Going);
 })->with(['guests', 'tier']);
+
+test('a_growing_party_waits_behind_the_waitlist', function (): void {
+    $event = Scenarios::event(capacity: 3, maxGuests: 2);
+    Events::for($event)->update(new UpdateEventData(waitlistAutoPromote: false));
+    [$growing, $other, $leaving, $waiting] = User::factory()->count(4)->create()->all();
+
+    foreach ([$growing, $other, $leaving, $waiting] as $user) {
+        Events::for($event)->rsvp($user)->going();
+    }
+
+    // A seat frees up; promotion is the organizer's call, so the waiting attendee stays queued.
+    Events::for($event)->rsvp($leaving)->notGoing();
+    expect($waiting->rsvpFor($event)?->status)->toBe(RsvpStatus::Waitlisted);
+
+    // Bringing a guest would take the seat the waiting attendee fits: no queue-jumping.
+    expect(fn () => Events::for($event)->rsvp($growing)->going(guests: 1))->toThrow(EventFullException::class)
+        ->and($growing->rsvpFor($event)?->guests)->toBe(0);
+
+    // Once the queue moved up (or holds nobody who fits), a party grows into free seats.
+    Events::for($event)->waitlist()->promote();
+    Events::for($event)->rsvp($other)->notGoing();
+    expect(Events::for($event)->rsvp($growing)->going(guests: 1)->guests)->toBe(1);
+});
+
+test('a_growing_party_on_a_ticket_type_waits_behind_its_waitlist', function (): void {
+    $event = Scenarios::event(capacity: 10, maxGuests: 2);
+    Events::for($event)->update(new UpdateEventData(waitlistAutoPromote: false));
+    Events::for($event)->tiers()->make('Front')->key('front')->capacity(2)->create();
+    [$growing, $leaving, $waiting, $big] = User::factory()->count(4)->create()->all();
+    Events::for($event)->rsvp($growing)->going(tier: 'front');
+    Events::for($event)->rsvp($leaving)->going(tier: 'front');
+    Events::for($event)->rsvp($big)->going(tier: 'front', guests: 2);
+    Events::for($event)->rsvp($waiting)->going(tier: 'front');
+    Events::for($event)->rsvp($leaving)->notGoing();
+
+    expect(fn () => Events::for($event)->rsvp($growing)->going(guests: 1))->toThrow(TierSoldOutException::class);
+
+    // A waiting party too big for the free seats blocks nobody.
+    Events::for($event)->waitlist()->promote();
+    Events::for($event)->rsvp($waiting)->notGoing();
+    expect($big->rsvpFor($event)?->status)->toBe(RsvpStatus::Waitlisted)
+        ->and(Events::for($event)->rsvp($growing)->going(guests: 1)->guests)->toBe(1);
+});

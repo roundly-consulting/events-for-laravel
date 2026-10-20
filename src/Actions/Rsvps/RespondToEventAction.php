@@ -33,8 +33,8 @@ use RoundlyConsulting\Events\Support\SeatErrors;
  *
  * Going takes seats — the party (attendee plus guests) within the ticket type's limits — while
  * both the event and the ticket type have room and nobody waiting for that ticket type would fit
- * them (no queue-jumping); a free ticket type is then going, a paid one held while the payment is
- * pending. Without room the attendee joins the waitlist (or, without one, `EventFullException` /
+ * them (no queue-jumping: a newcomer waits, and a going or held party may not grow into them); a
+ * free ticket type is then going, a paid one held while the payment is pending. Without room the attendee joins the waitlist (or, without one, `EventFullException` /
  * `TierSoldOutException`). Leaving frees the seats and the waitlist moves up in the same
  * transaction. A checked-in attendee cannot leave.
  *
@@ -141,6 +141,12 @@ final readonly class RespondToEventAction
 
             if (! $book->fitsReplacing($party, $tierId, $currentParty, $currentTier)) {
                 throw SeatErrors::noRoom($book, $party, $currentParty);
+            }
+
+            // More guests take free seats someone waiting for this ticket type would fit: the
+            // queue comes first, as it does for a newcomer.
+            if ($party > $currentParty && $book->waitlistWouldFit($tierId, (int) $rsvp->getKey())) {
+                throw SeatErrors::waitlistFirst($tierId);
             }
 
             $this->seats->execute($book, $rsvp, $current === RsvpStatus::Going ? RsvpStatus::Going : $target, $request->guests, $tierId, $request->actor, answer: true);
