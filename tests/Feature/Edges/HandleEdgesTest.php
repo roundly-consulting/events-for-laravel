@@ -38,3 +38,41 @@ test('venues_by_actor_create_checks_the_policy', function (): void {
     $mine = Events::venues()->by($outsider)->create(new VenueData(name: 'Mine', timezone: 'Europe/Bratislava', owner: $outsider));
     expect($mine->owner_id)->toBe($outsider->getKey());
 });
+
+test('handle_reads_with_an_actor_check_the_policy', function (): void {
+    $organizer = User::factory()->create();
+    $event = Scenarios::event(capacity: 10, organizer: $organizer);
+    Events::for($event)->tiers()->add('Public', key: 'public');
+    Events::for($event)->tiers()->add('Crew', hidden: true, key: 'crew');
+    $attendee = User::factory()->create();
+    Events::for($event)->rsvp($attendee)->going(tier: 'public');
+    Events::for($event)->invitations()->send(User::factory()->create());
+    $outsider = User::factory()->create();
+    $as = Events::for($event)->by($outsider);
+
+    foreach ([
+        fn () => $as->attendees()->going(),
+        fn () => $as->attendees()->interested(),
+        fn () => $as->attendees()->checkedIn(),
+        fn () => $as->attendees()->find($attendee),
+        fn () => $as->invitations()->all(),
+        fn () => $as->invitations()->pending(),
+        fn () => $as->waitlist()->position($attendee),
+    ] as $read) {
+        expect($read)->toThrow(AuthorizationException::class);
+    }
+
+    // What the actor may see: their own RSVP, the visible ticket types, the hosts of a visible event.
+    expect(Events::for($event)->by($attendee)->attendees()->find($attendee)?->attendee_id)->toBe($attendee->getKey())
+        ->and(Events::for($event)->by($attendee)->waitlist()->position($attendee))->toBeNull()
+        ->and($as->tiers()->all()->pluck('key')->all())->toBe(['public'])
+        ->and($as->hosts()->all())->toHaveCount(0)
+        ->and(Events::for($event)->by($organizer)->tiers()->all()->pluck('key')->all())->toBe(['public', 'crew'])
+        ->and(Events::for($event)->by($organizer)->attendees()->going())->toHaveCount(1)
+        ->and(Events::for($event)->tiers()->all())->toHaveCount(2);
+
+    // A public guest list may be read by anyone who sees the event.
+    Events::for($event)->update(new UpdateEventData(guestList: GuestList::Public));
+    expect($as->attendees()->going())->toHaveCount(1)
+        ->and(fn () => Events::for(Scenarios::event(publish: false))->by($outsider)->hosts()->all())->toThrow(AuthorizationException::class);
+});

@@ -49,10 +49,14 @@ final readonly class EventHosts
     }
 
     /**
+     * The co-hosts (`view` with an actor: they show on the event page).
+     *
      * @return Collection<int, EventHost>
      */
     public function all(): Collection
     {
+        $this->handle->authorize('view');
+
         return EventHost::query()
             ->where('event_id', $this->handle->event()->getKey())
             ->with('host')
@@ -62,6 +66,8 @@ final readonly class EventHosts
 
     public function has(Model $host): bool
     {
+        $this->handle->authorize('view');
+
         return EventHost::query()
             ->where('event_id', $this->handle->event()->getKey())
             ->where('host_type', $host->getMorphClass())

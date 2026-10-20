@@ -55,10 +55,14 @@ final readonly class EventInvitations
     }
 
     /**
+     * Every invitation (`invite` with an actor).
+     *
      * @return Collection<int, EventInvitation>
      */
     public function all(): Collection
     {
+        $this->handle->authorize('invite');
+
         return EventInvitation::query()
             ->where('event_id', $this->handle->event()->getKey())
             ->with('invitee')

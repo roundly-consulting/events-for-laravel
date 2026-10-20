@@ -147,10 +147,14 @@ final readonly class EventAttendees
     }
 
     /**
+     * Who is through the door (`checkIn` with an actor).
+     *
      * @return Collection<int, Rsvp>
      */
     public function checkedIn(): Collection
     {
+        $this->handle->authorize('checkIn');
+
         return EventModels::rsvp()::query()
             ->where('event_id', $this->handle->event()->getKey())
             ->whereNotNull('checked_in_at')
@@ -160,10 +164,16 @@ final readonly class EventAttendees
     }
 
     /**
-     * The attendee's RSVP, or null.
+     * The attendee's RSVP, or null — an actor reads their own, or any with `manageAttendees`.
      */
     public function find(Model $attendee): ?Rsvp
     {
+        $actor = $this->handle->actor();
+
+        if ($actor === null || ! $actor->is($attendee)) {
+            $this->handle->authorize('manageAttendees');
+        }
+
         return EventModels::rsvp()::query()
             ->where('event_id', $this->handle->event()->getKey())
             ->where('attendee_type', $attendee->getMorphClass())
@@ -172,18 +182,26 @@ final readonly class EventAttendees
     }
 
     /**
+     * The guest list (`viewAttendees` with an actor: the event's `guest_list` decides).
+     *
      * @return Collection<int, Rsvp>
      */
     public function going(): Collection
     {
+        $this->handle->authorize('viewAttendees');
+
         return $this->withStatus(RsvpStatus::Going);
     }
 
     /**
+     * Interested people (`viewInterested` with an actor: managers).
+     *
      * @return Collection<int, Rsvp>
      */
     public function interested(): Collection
     {
+        $this->handle->authorize('viewInterested');
+
         return $this->withStatus(RsvpStatus::Interested);
     }
 

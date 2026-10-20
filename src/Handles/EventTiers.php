@@ -15,6 +15,7 @@ use RoundlyConsulting\Events\DataTransferObjects\TierData;
 use RoundlyConsulting\Events\DataTransferObjects\UpdateTierData;
 use RoundlyConsulting\Events\Enums\EventOperation;
 use RoundlyConsulting\Events\Models\AdmissionTier;
+use RoundlyConsulting\Events\Support\EventAuthorization;
 use RoundlyConsulting\Events\Support\EventModels;
 use RoundlyConsulting\Money\Money;
 
@@ -117,14 +118,19 @@ final readonly class EventTiers
     }
 
     /**
-     * Every live ticket type, in order (hidden ones included).
+     * Every live ticket type, in order — hidden ones included, unless an actor who may not manage
+     * the ticket types reads them (hidden ones look unknown to everyone else).
      *
      * @return Collection<int, AdmissionTier>
      */
     public function all(): Collection
     {
+        $actor = $this->handle->actor();
+        $hidden = $actor === null || EventAuthorization::allows($actor, 'manageTiers', $this->handle->event());
+
         return EventModels::tier()::query()
             ->where('event_id', $this->handle->event()->getKey())
+            ->when(! $hidden, static fn ($query) => $query->where('hidden', false))
             ->orderBy('position')
             ->orderBy('id')
             ->get();

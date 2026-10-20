@@ -56,10 +56,17 @@ final readonly class EventWaitlist
     }
 
     /**
-     * The attendee's 1-based place in the queue, or null.
+     * The attendee's 1-based place in the queue, or null — an actor reads their own, or any with
+     * `viewWaitlist`.
      */
     public function position(Model $attendee): ?int
     {
+        $actor = $this->handle->actor();
+
+        if ($actor === null || ! $actor->is($attendee)) {
+            $this->handle->authorize('viewWaitlist');
+        }
+
         return EventModels::rsvp()::query()
             ->where('event_id', $this->handle->event()->getKey())
             ->where('attendee_type', $attendee->getMorphClass())
