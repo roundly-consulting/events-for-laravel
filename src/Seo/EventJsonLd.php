@@ -92,7 +92,9 @@ final readonly class EventJsonLd
     private function date(Event $event, CarbonImmutable $moment, bool $start): string
     {
         if ($event->all_day) {
-            return (string) ($start ? $event->starts_on : $event->ends_on);
+            // A start is the moment's local day (the current start, or the announced one a
+            // reschedule kept); the end is the inclusive last day.
+            return $start ? $moment->setTimezone($event->timezone)->format('Y-m-d') : (string) $event->ends_on;
         }
 
         return $moment->setTimezone($event->timezone)->toIso8601String();

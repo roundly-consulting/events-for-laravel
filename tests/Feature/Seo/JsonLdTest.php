@@ -254,3 +254,16 @@ it('refuses bad structured-data settings', function (): void {
 
     expect(AttendanceMode::Offline->schemaOrg())->toBe('https://schema.org/OfflineEventAttendanceMode');
 });
+
+test('json_ld_previous_start_date_of_a_rescheduled_all_day_event', function (): void {
+    $event = Events::make('Summer fair')->organizedBy($this->organizer)->at($this->venue)
+        ->allDay('2027-07-16', through: '2027-07-18')->publish();
+
+    Events::for($event)->reschedule('2027-08-20');
+    $jsonLd = Events::for($event->fresh() ?? $event)->jsonLd();
+
+    // The announced first day, in the event's own calendar — not the new one again.
+    expect($jsonLd['startDate'] ?? null)->toBe('2027-08-20')
+        ->and($jsonLd['endDate'] ?? null)->toBe('2027-08-22')
+        ->and($jsonLd['previousStartDate'] ?? null)->toBe('2027-07-16');
+});
