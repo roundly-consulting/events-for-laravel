@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Events\Notifications;
 
+use Illuminate\Container\Container;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
@@ -16,6 +17,7 @@ use RoundlyConsulting\Events\Models\Rsvp;
 use RoundlyConsulting\Events\Support\Clock;
 use RoundlyConsulting\Events\Support\EventsConfig;
 use RoundlyConsulting\Events\Support\EventVisibility;
+use RoundlyConsulting\Events\Support\InvitationTokens;
 use RoundlyConsulting\Events\Support\ReminderSchedule;
 
 /**
@@ -75,6 +77,32 @@ final class RecipientResolver
             ->values();
     }
 
+    /**
+     * The invitation is still open — pending, or accepted and sent again (the invitee asked for
+     * the link anew) — and still holds the notice's token: a link a later send or an answer made
+     * dead is never mailed.
+     */
+    private static function invitationStillOpen(EventNotification $notification, Event $event, Model $notifiable): bool
+    {
+        $token = $notification->data['token'] ?? null;
+        $query = EventInvitation::query()
+            ->where('event_id', $event->getKey())
+            ->where('invitee_type', $notifiable->getMorphClass())
+            ->where('invitee_id', $notifiable->getKey());
+
+        if (! is_string($token)) {
+            // A notice without a link (a host's own): the old rule, pending only.
+            return $query->where('status', InvitationStatus::Pending->value)->exists();
+        }
+
+        $hash = Container::getInstance()->make(InvitationTokens::class)->hash($token);
+
+        return $hash !== null && $query
+            ->whereIn('status', [InvitationStatus::Pending->value, InvitationStatus::Accepted->value])
+            ->where('token_hash', $hash)
+            ->exists();
+    }
+
     public static function notifiable(object $model): bool
     {
         return method_exists($model, 'notify') && method_exists($model, 'routeNotificationFor');
@@ -99,12 +127,7 @@ final class RecipientResolver
         $type = $notification->type();
 
         if ($type === 'invited') {
-            return EventInvitation::query()
-                ->where('event_id', $event->getKey())
-                ->where('invitee_type', $notifiable->getMorphClass())
-                ->where('invitee_id', $notifiable->getKey())
-                ->where('status', InvitationStatus::Pending->value)
-                ->exists();
+            return self::invitationStillOpen($notification, $event, $notifiable);
         }
 
         $rsvp = $event->rsvps()->where('attendee_type', $notifiable->getMorphClass())->where('attendee_id', $notifiable->getKey())->first();

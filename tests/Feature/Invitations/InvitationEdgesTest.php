@@ -141,3 +141,30 @@ test('queued_invitation_notices_are_encrypted', function (): void {
         ->and($jobs->first()->shouldBeEncrypted)->toBeTrue()
         ->and($token)->not->toBe('');
 });
+
+test('resending_an_accepted_invitation_mails_the_new_link', function (): void {
+    Notification::fake();
+    $event = townHall();
+    $invitee = User::factory()->create();
+    $first = Events::for($event)->invitations()->send($invitee);
+    Events::invitations()->accept((string) $first->plainToken, by: $invitee);
+
+    // Sent again (the invitee lost the link): a new token, and the notice that carries it.
+    $again = Events::for($event)->invitations()->send($invitee);
+
+    expect($again->status)->toBe(InvitationStatus::Accepted)
+        ->and(Events::invitations()->find((string) $again->plainToken))->not->toBeNull();
+    Notification::assertSentToTimes($invitee, EventInvitationNotification::class, 2);
+    Notification::assertSentTo($invitee, EventInvitationNotification::class, static fn (EventInvitationNotification $notice): bool => $notice->data['token'] === $again->plainToken);
+
+    // A notice whose link died before delivery (sent again meanwhile) is dropped: no dead link.
+    $stale = new EventInvitationNotification($event, data: ['token' => (string) $first->plainToken, 'message' => null]);
+    expect($stale->shouldSend($invitee, 'mail'))->toBeFalse()
+        ->and((new EventInvitationNotification($event, data: ['token' => (string) $again->plainToken, 'message' => null]))->shouldSend($invitee, 'mail'))->toBeTrue();
+
+    // A notice with no link (a host's own) keeps the old rule: pending invitations only.
+    $pending = User::factory()->create();
+    Events::for($event)->invitations()->send($pending);
+    expect((new EventInvitationNotification($event))->shouldSend($pending, 'mail'))->toBeTrue()
+        ->and((new EventInvitationNotification($event))->shouldSend($invitee, 'mail'))->toBeFalse();
+});
