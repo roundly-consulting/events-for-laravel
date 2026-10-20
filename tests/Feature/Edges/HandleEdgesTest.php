@@ -208,3 +208,14 @@ test('a_venue_address_change_reaches_subscribed_calendars', function (): void {
     Events::venues()->update($venue, new UpdateVenueData(capacity: 50));
     expect($event->fresh()?->sequence)->toBe($sequence + 1);
 });
+
+test('doctor_warns_about_organizers_outside_the_alias_map', function (): void {
+    $event = Scenarios::event();
+    $event->forceFill(['organizer_type' => 'App\\Models\\Retired', 'organizer_id' => 1])->saveQuietly();
+
+    expect(Artisan::call('events:doctor', ['--json' => true]))->toBe(0);
+    $warnings = array_filter(json_decode(trim(Artisan::output()), true), static fn (array $finding): bool => $finding['check'] === 'organizers');
+
+    expect($warnings)->toHaveCount(1)
+        ->and(array_values($warnings)[0]['message'])->toContain('1 event(s)');
+});

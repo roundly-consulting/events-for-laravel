@@ -241,6 +241,15 @@ final readonly class Doctor
                 $findings[] = self::warning('timezones', sprintf('%d event(s) use a timezone other than their venue\'s.', $mismatched));
             }
 
+            // An organizer type outside events.organizers: the API cannot name it, and its
+            // managers never see those events in their lists.
+            $known = array_values(array_map(static fn (string $class): string => (new $class)->getMorphClass(), EventsConfig::organizers()));
+            $foreign = $events::withTrashed()->whereNotIn((new $events)->qualifyColumn('organizer_type'), $known)->count();
+
+            if ($foreign > 0) {
+                $findings[] = self::warning('organizers', sprintf('%d event(s) have an organizer type outside events.organizers: add it to the map (or transfer the events).', $foreign));
+            }
+
             try {
                 $stale = $events::query()->inPhase(EventPhase::Postponed)->where('postponed_at', '<', Clock::format(Clock::now()->subDays(90)))->count();
             } catch (Throwable) {
