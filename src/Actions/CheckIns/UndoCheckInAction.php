@@ -17,7 +17,8 @@ use RoundlyConsulting\Events\Support\RsvpRules;
 /**
  * Undoes a check-in (scanned by mistake): the attendee is going and not checked in again. The
  * RSVP row alone is locked, and the write is a compare-and-swap on `checked_in_at IS NOT NULL`,
- * so two undos announce one `CheckInUndone`.
+ * so two undos announce one `CheckInUndone`. The returned RSVP reports
+ * `wasChanged('checked_in_at')` only when this call undid a check-in.
  */
 final readonly class UndoCheckInAction
 {
@@ -32,18 +33,26 @@ final readonly class UndoCheckInAction
         [$rsvp, $undone] = EventTransaction::run(new $model, static function () use ($event, $who): array {
             $rsvp = RsvpRules::rsvpOf($event, $who) ?? throw RsvpNotFoundException::missing();
 
+            $cleared = [
+                'checked_in_at' => null,
+                'checked_in_guests' => null,
+                'check_in_method' => null,
+                'checked_in_by_type' => null,
+                'checked_in_by_id' => null,
+            ];
+
             $undone = $rsvp->checked_in_at !== null && EventModels::rsvp()::query()
                 ->whereKey($rsvp->getKey())
                 ->whereNotNull('checked_in_at')
-                ->update([
-                    'checked_in_at' => null,
-                    'checked_in_guests' => null,
-                    'check_in_method' => null,
-                    'checked_in_by_type' => null,
-                    'checked_in_by_id' => null,
-                ]) === 1;
+                ->update($cleared) === 1;
 
-            return [$undone ? $rsvp->refresh() : $rsvp, $undone];
+            if ($undone) {
+                // What this call changed, as a save would report it — then the stored row.
+                $rsvp->forceFill($cleared)->syncChanges();
+                $rsvp->refresh();
+            }
+
+            return [$rsvp, $undone];
         });
 
         if ($undone) {

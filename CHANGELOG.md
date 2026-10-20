@@ -26,6 +26,7 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 - Rescheduling an announced event to a date that is already over is refused (`InvalidEventScheduleException`, 422 `invalid_schedule`) instead of telling attendees about a past date, releasing every hold and completing at once. A draft may still get any date, and a new date that has started but not ended is fine.
 - Force-deleting an attendee (and `events:repair --orphans`) announces each released RSVP like any other way out: `RsvpChanged`, plus `RsvpCancelled` with `wasPaid` for a seat that was paid for — the refund trigger was missing. The RSVP row is gone by the time listeners run; the event carries the model with its payment reference.
 - `Events::fake()` records the parts of a builder chain (`Events::make()->coHostedBy()->tier()->poster()->category()->labels()->create()`) as `AddCoHost`, `CreateTier`, `SetPoster`, `Categorize` and `AttachLabels`, as its docs promise: `assertNoTierCreated()` and the like no longer pass after a builder created one.
+- The fake's co-host and undo assertions check what really happened: `assertCoHostAdded()` / `assertCoHostRemoved()` / `assertCheckInUndone()` no longer pass for a call that changed nothing (adding the organizer or an existing co-host, removing someone who is no co-host, undoing a check-in that never happened), and their `assertNo…()` pairs no longer fail for one. `UndoCheckInAction` returns the RSVP with `wasChanged('checked_in_at')` set when it undid a check-in.
 
 ## 1.0.0 - 2026-10-20
 

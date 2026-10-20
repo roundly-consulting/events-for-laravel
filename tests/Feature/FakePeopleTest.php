@@ -91,3 +91,40 @@ test('fake_naming_rule_is_pinned', function (): void {
     expect($methods)->toContain('assertNoVenueCreated', 'assertNoTierCreated', 'assertNoCoHostAdded', 'assertNoPaymentConfirmed', 'assertNothingRsvped', 'assertNothingCheckedIn',
         'assertNothingDeleted', 'assertNoPosterChanged', 'assertNoTiersReordered', 'assertNoAttendeeForgotten', 'assertNoInvitationAnswered');
 });
+
+test('fake_ignores_no_op_co_host_and_undo_calls', function (): void {
+    $organizer = User::factory()->create();
+    $event = Scenarios::event(organizer: $organizer, capacity: 5);
+    $stranger = User::factory()->create();
+    $host = User::factory()->create();
+    $attendee = User::factory()->create();
+    Events::for($event)->rsvp($attendee)->going();
+    $fake = Events::fake();
+
+    // Calls that change nothing: the organizer is never their own co-host, a stranger is no
+    // co-host to remove, and an attendee who never checked in has nothing to undo.
+    Events::for($event)->hosts()->add($organizer);
+    Events::for($event)->hosts()->remove($stranger);
+    Events::for($event)->attendees()->undoCheckIn($attendee);
+
+    $fake->assertNoCoHostAdded();
+    $fake->assertNoCoHostRemoved();
+    $fake->assertNoCheckInUndone();
+    expect(fn () => $fake->assertCoHostAdded($event, $organizer))->toThrow(ExpectationFailedException::class)
+        ->and(fn () => $fake->assertCoHostRemoved($event, $stranger))->toThrow(ExpectationFailedException::class)
+        ->and(fn () => $fake->assertCheckInUndone($event))->toThrow(ExpectationFailedException::class);
+
+    // The same calls when they do something.
+    Events::for($event)->hosts()->add($host);
+    Events::for($event)->hosts()->remove($host);
+    Scenarios::minutesBeforeStart($event, 30);
+    Events::for($event)->attendees()->checkIn($attendee);
+    Events::for($event)->attendees()->undoCheckIn($attendee);
+
+    $fake->assertCoHostAdded($event, $host);
+    $fake->assertCoHostRemoved($event, $host);
+    $fake->assertCheckInUndone($event);
+    expect(fn () => $fake->assertNoCoHostAdded())->toThrow(ExpectationFailedException::class)
+        ->and(fn () => $fake->assertNoCoHostRemoved())->toThrow(ExpectationFailedException::class)
+        ->and(fn () => $fake->assertNoCheckInUndone())->toThrow(ExpectationFailedException::class);
+});

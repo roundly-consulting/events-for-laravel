@@ -655,14 +655,19 @@ final class EventsFake extends EventsManager
         $this->assertNotRecorded(EventOperation::ManualCheckIn);
     }
 
+    /**
+     * An undo at `$event` that undid a check-in (one on an RSVP that was not checked in changes
+     * nothing and does not count).
+     */
     public function assertCheckInUndone(?Event $event = null): void
     {
-        $this->assertRecorded(EventOperation::UndoCheckIn, static fn (RecordedEventOperation $recorded): bool => $recorded->concerns($event));
+        $this->assertRecorded(EventOperation::UndoCheckIn, static fn (RecordedEventOperation $recorded): bool => $recorded->concerns($event)
+            && self::undidCheckIn($recorded));
     }
 
     public function assertNoCheckInUndone(): void
     {
-        $this->assertNotRecorded(EventOperation::UndoCheckIn);
+        $this->assertNoneChanged(EventOperation::UndoCheckIn, self::undidCheckIn(...));
     }
 
     // People ---------------------------------------------------------------------------------
@@ -678,26 +683,36 @@ final class EventsFake extends EventsManager
         $this->assertNotRecorded(EventOperation::SendInvitation);
     }
 
+    /**
+     * `$host` (null = anyone) became a co-host of `$event` — adding the organizer or an existing
+     * co-host changes nothing and does not count.
+     */
     public function assertCoHostAdded(?Event $event = null, ?Model $host = null): void
     {
         $this->assertRecorded(EventOperation::AddCoHost, static fn (RecordedEventOperation $recorded): bool => $recorded->concerns($event)
+            && $recorded->result === true
             && ($host === null || $recorded->model('host')?->is($host) === true));
     }
 
     public function assertNoCoHostAdded(): void
     {
-        $this->assertNotRecorded(EventOperation::AddCoHost);
+        $this->assertNoneChanged(EventOperation::AddCoHost, static fn (RecordedEventOperation $recorded): bool => $recorded->result === true);
     }
 
+    /**
+     * `$host` (null = anyone) stopped being a co-host of `$event` — removing someone who was none
+     * changes nothing and does not count.
+     */
     public function assertCoHostRemoved(?Event $event = null, ?Model $host = null): void
     {
         $this->assertRecorded(EventOperation::RemoveCoHost, static fn (RecordedEventOperation $recorded): bool => $recorded->concerns($event)
+            && $recorded->result === true
             && ($host === null || $recorded->model('host')?->is($host) === true));
     }
 
     public function assertNoCoHostRemoved(): void
     {
-        $this->assertNotRecorded(EventOperation::RemoveCoHost);
+        $this->assertNoneChanged(EventOperation::RemoveCoHost, static fn (RecordedEventOperation $recorded): bool => $recorded->result === true);
     }
 
     public function assertInvitationRevoked(?Event $event = null, ?Model $invitee = null): void
@@ -858,6 +873,23 @@ final class EventsFake extends EventsManager
 
         PHPUnit::assertNotEmpty($candidates, sprintf('Expected a [%s] event operation, but none was recorded.', $names));
         PHPUnit::assertNotEmpty(array_filter($candidates, $matches), sprintf('A [%s] event operation was recorded, but none matched.', $names));
+    }
+
+    private static function undidCheckIn(RecordedEventOperation $recorded): bool
+    {
+        return $recorded->result instanceof Rsvp && $recorded->result->wasChanged('checked_in_at');
+    }
+
+    /**
+     * No recorded call of this kind changed anything: calls that were no-ops do not count.
+     *
+     * @param  Closure(RecordedEventOperation): bool  $changed
+     */
+    private function assertNoneChanged(EventOperation $operation, Closure $changed): void
+    {
+        $count = count(array_filter($this->recorded($operation), $changed));
+
+        PHPUnit::assertSame(0, $count, sprintf('Expected no [%s] event operation that changed something, but %d did.', $operation->value, $count));
     }
 
     private function assertNotRecorded(EventOperation $operation): void
