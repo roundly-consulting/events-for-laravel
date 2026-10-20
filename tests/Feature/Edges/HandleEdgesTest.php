@@ -94,3 +94,16 @@ test('a_draft_made_online_is_scheduled_not_moved_online', function (): void {
     Events::for($fresh ?? $draft)->moveOnline('https://meet.example.com/xyz');
     expect(Events::jsonLd($draft->fresh() ?? $draft)['eventStatus'] ?? null)->toBe('https://schema.org/EventMovedOnline');
 });
+
+test('json_ld_offers_follow_the_sale_window', function (): void {
+    $event = Scenarios::event(capacity: 100);
+    Events::for($event)->tiers()->make('Early bird')->key('early')->onSale(until: '2027-01-01 12:30')->create();
+    Events::for($event)->tiers()->make('Regular')->key('regular')->create();
+    Scenarios::freeze('2027-01-05 12:00:00');
+
+    $offers = collect(Events::jsonLd($event->fresh() ?? $event)['offers'] ?? [])->keyBy('name');
+
+    expect($offers['Early bird']['availability'] ?? null)->toBe('https://schema.org/SoldOut')
+        ->and($offers['Early bird']['validThrough'] ?? null)->toBe('2027-01-01T12:30:00+01:00')
+        ->and($offers['Regular']['availability'] ?? null)->toBe('https://schema.org/InStock');
+});

@@ -210,6 +210,7 @@ final readonly class EventJsonLd
             'priceCurrency' => $tier->price?->currency()->code ?? TierInput::defaultCurrency(),
             'availability' => self::SCHEMA.$this->availability($event, $tier),
             'validFrom' => $tier->sale_starts_at?->setTimezone($event->timezone)->toIso8601String(),
+            'validThrough' => $tier->sale_ends_at?->setTimezone($event->timezone)->toIso8601String(),
             'url' => $url,
         ], static fn (mixed $value): bool => $value !== null))->all());
     }
@@ -218,6 +219,11 @@ final readonly class EventJsonLd
     {
         if ($tier->sale_starts_at !== null && $tier->sale_starts_at->greaterThan(Clock::now())) {
             return 'PreOrder';
+        }
+
+        // A sale that ended sells nothing any more.
+        if ($tier->sale_ends_at !== null && ! $tier->sale_ends_at->greaterThan(Clock::now())) {
+            return 'SoldOut';
         }
 
         $left = $tier->seatsLeft();
