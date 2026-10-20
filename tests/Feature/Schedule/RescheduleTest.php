@@ -60,3 +60,19 @@ test('a_31_day_all_day_event_across_the_autumn_switch_is_allowed', function (): 
     expect(fn () => $bratislava()->allDay('2027-10-01', through: '2027-11-01')->create())
         ->toThrow(InvalidEventScheduleException::class);
 });
+
+test('a_draft_reschedule_clears_the_doors_time', function (): void {
+    $draft = Events::make('Gig')->organizedBy(User::factory()->create())->timezone('UTC')
+        ->startsAt('2027-02-10 20:00')->duration('2 hours')->doorsOpenAt('2027-02-10 19:00')->create();
+
+    // A month later: the old doors time would lie a month before the new start.
+    Events::for($draft)->reschedule('2027-03-10 20:00');
+    $draft->refresh();
+
+    expect($draft->starts_at->toIso8601String())->toBe('2027-03-10T20:00:00+00:00')
+        ->and($draft->doors_open_at)->toBeNull();
+
+    // So a later edit of the length is not refused over a doors time nobody set for this date.
+    Events::for($draft)->update(new UpdateEventData(duration: '3 hours'));
+    expect($draft->fresh()?->ends_at->toIso8601String())->toBe('2027-03-10T23:00:00+00:00');
+});

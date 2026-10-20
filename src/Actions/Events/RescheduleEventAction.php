@@ -36,7 +36,8 @@ use RoundlyConsulting\Events\Support\SeatBook;
  * window); holds ending after an earlier new start end at it; seats freed meanwhile (say, while
  * postponed) go to the waitlist once the event is on again.
  *
- * A draft has announced nothing: it is just edited, no transition is applied.
+ * A draft has announced nothing: it is just edited (its doors time cleared too), no transition
+ * is applied.
  */
 final readonly class RescheduleEventAction
 {
@@ -101,10 +102,13 @@ final readonly class RescheduleEventAction
 
             $event->starts_at = $schedule->startsAt;
             $event->ends_at = $schedule->endsAt;
+            // As on an announced event: the old doors time could lie outside the new window.
+            $hadDoors = $event->doors_open_at !== null;
+            $event->doors_open_at = null;
             $event->save();
             $this->holds->execute(SeatBook::open($event));
 
-            $this->events->dispatch(new EventUpdated($event, ['starts_at', 'ends_at'], $actor, $silent));
+            $this->events->dispatch(new EventUpdated($event, ['starts_at', 'ends_at', ...($hadDoors ? ['doors_open_at'] : [])], $actor, $silent));
 
             return $event;
         });
