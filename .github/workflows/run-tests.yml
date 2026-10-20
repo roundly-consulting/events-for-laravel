@@ -32,10 +32,7 @@ jobs:
           extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite, bcmath, intl, fileinfo, gd, posix
           coverage: xdebug
 
-      # tags-for-laravel is not on Packagist yet: composer reads it from its private repo.
       - name: Install dependencies
-        env:
-          COMPOSER_AUTH: '{"github-oauth":{"github.com":"${{ secrets.PRIVATE_REPOS_TOKEN }}"}}'
         run: |
           composer require --dev "laravel/framework:${{ matrix.laravel }}" "orchestra/testbench:${{ matrix.testbench }}" --no-interaction --no-update
           composer update --${{ matrix.stability }} --prefer-dist --no-interaction
@@ -73,10 +70,7 @@ jobs:
           extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite, pgsql, pdo_pgsql, bcmath, intl, fileinfo, gd, posix
           coverage: none
 
-      # tags-for-laravel is not on Packagist yet: composer reads it from its private repo.
       - name: Install dependencies
-        env:
-          COMPOSER_AUTH: '{"github-oauth":{"github.com":"${{ secrets.PRIVATE_REPOS_TOKEN }}"}}'
         run: composer update --prefer-stable --prefer-dist --no-interaction
 
       # The image's init server listens on the socket only, so a TCP answer means the real one is up.
@@ -128,10 +122,7 @@ jobs:
           extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite, mysql, pdo_mysql, bcmath, intl, fileinfo, gd, posix
           coverage: none
 
-      # tags-for-laravel is not on Packagist yet: composer reads it from its private repo.
       - name: Install dependencies
-        env:
-          COMPOSER_AUTH: '{"github-oauth":{"github.com":"${{ secrets.PRIVATE_REPOS_TOKEN }}"}}'
         run: composer update --prefer-stable --prefer-dist --no-interaction
 
       # The image's init server runs with networking off, so a TCP answer means the real one is up.
