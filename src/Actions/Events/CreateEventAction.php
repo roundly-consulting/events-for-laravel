@@ -4,17 +4,21 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Events\Actions\Events;
 
+use Illuminate\Container\Container;
 use Illuminate\Contracts\Events\Dispatcher;
 use RoundlyConsulting\Events\Actions\Internal\ResolveScheduleAction;
 use RoundlyConsulting\Events\Actions\Internal\WriteCoHostAction;
 use RoundlyConsulting\Events\Actions\Tiers\CreateTierAction;
 use RoundlyConsulting\Events\DataTransferObjects\CreateEventData;
+use RoundlyConsulting\Events\Enums\EventOperation;
 use RoundlyConsulting\Events\Enums\EventTagType;
 use RoundlyConsulting\Events\Events\EventCreated;
+use RoundlyConsulting\Events\EventsManager;
 use RoundlyConsulting\Events\Exceptions\InvalidEventException;
 use RoundlyConsulting\Events\Exceptions\InvalidEventScheduleException;
 use RoundlyConsulting\Events\Exceptions\InvalidOrganizerException;
 use RoundlyConsulting\Events\Exceptions\VenueNotFoundException;
+use RoundlyConsulting\Events\Models\AdmissionTier;
 use RoundlyConsulting\Events\Models\Event;
 use RoundlyConsulting\Events\Models\Venue;
 use RoundlyConsulting\Events\Support\EventAuthorization;
@@ -25,13 +29,16 @@ use RoundlyConsulting\Events\Support\EventsConfig;
 use RoundlyConsulting\Events\Support\EventTransaction;
 use RoundlyConsulting\Events\Support\WallClock;
 use RoundlyConsulting\Sluggable\Exceptions\SlugAlreadyTakenException;
+use RoundlyConsulting\Tags\DataTransferObjects\TagChanges;
 use RoundlyConsulting\Tags\TagsManager;
 
 /**
  * Creates an event as a draft: validates the content, resolves the schedule in the event's
  * timezone (explicit, else the venue's, else `events.defaults.timezone`, else the app's), derives
  * the attendance mode, and writes the event with its co-hosts, ticket types and poster in one
- * transaction, with its category and labels.
+ * transaction, with its category and labels. Each of those is its own operation on the manager
+ * (`AddCoHost`, `CreateTier`, `SetPoster`, `Categorize`, `AttachLabels`), so `Events::fake()`
+ * records a builder's parts as it records the same calls on a handle.
  *
  * With an actor, the policy's `create` ability is checked, and organizing as anyone but the actor
  * needs the organizer's approval (`Organizer::allowsEventManagementBy($actor)`).
@@ -40,10 +47,6 @@ final readonly class CreateEventAction
 {
     public function __construct(
         private ResolveScheduleAction $schedules,
-        private WriteCoHostAction $coHosts,
-        private CreateTierAction $tiers,
-        private SetPosterAction $posters,
-        private TagsManager $tags,
         private Dispatcher $events,
     ) {}
 
@@ -120,25 +123,54 @@ final readonly class CreateEventAction
                 throw InvalidEventException::slugTaken(implode(', ', $data->slug ?? []));
             }
 
+            $manager = Container::getInstance()->make(EventsManager::class);
+            $context = ['event' => $event, 'actor' => $actor, 'system' => false, 'silent' => false];
+
             foreach ($data->coHosts as $host) {
-                $this->coHosts->execute($event, $host, $actor);
+                $manager->perform(
+                    EventOperation::AddCoHost,
+                    WriteCoHostAction::class,
+                    static fn (WriteCoHostAction $action): bool => $action->execute($event, $host, $actor),
+                    [...$context, 'host' => $host],
+                );
             }
 
             foreach ($data->tiers as $tier) {
-                $this->tiers->execute($event, $tier, $actor);
+                $manager->perform(
+                    EventOperation::CreateTier,
+                    CreateTierAction::class,
+                    static fn (CreateTierAction $action): AdmissionTier => $action->execute($event, $tier, $actor),
+                    [...$context, 'data' => $tier],
+                );
             }
 
             if ($data->poster !== null || $data->posterDraft !== null) {
-                $this->posters->execute($event, $data->poster, $data->posterDraft, $actor);
+                $manager->perform(
+                    EventOperation::SetPoster,
+                    SetPosterAction::class,
+                    static fn (SetPosterAction $action): Event => $action->execute($event, $data->poster, $data->posterDraft, $actor),
+                    [...$context, 'removed' => false],
+                );
             }
 
             // The new row is this transaction's own, so tags' taggable lock comes after it.
             if ($data->category !== null) {
-                $this->tags->sync($event, $data->category, EventTagType::Category);
+                $category = $data->category;
+                $manager->perform(
+                    EventOperation::Categorize,
+                    TagsManager::class,
+                    static fn (TagsManager $tags): TagChanges => $tags->sync($event, $category, EventTagType::Category),
+                    [...$context, 'category' => $category],
+                );
             }
 
             if ($data->labels !== []) {
-                $this->tags->attach($event, $data->labels, EventTagType::Label);
+                $manager->perform(
+                    EventOperation::AttachLabels,
+                    TagsManager::class,
+                    static fn (TagsManager $tags): TagChanges => $tags->attach($event, $data->labels, EventTagType::Label),
+                    [...$context, 'labels' => $data->labels],
+                );
             }
 
             $this->events->dispatch(new EventCreated($event, $actor));

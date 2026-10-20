@@ -25,6 +25,7 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 - `reschedule()` locks the event before choosing between a draft edit and an announced reschedule: a stale draft model, or a publish committed by another request meanwhile, no longer turns a real reschedule into a quiet edit (no `EventRescheduled`, no notices, no `previous_starts_at`).
 - Rescheduling an announced event to a date that is already over is refused (`InvalidEventScheduleException`, 422 `invalid_schedule`) instead of telling attendees about a past date, releasing every hold and completing at once. A draft may still get any date, and a new date that has started but not ended is fine.
 - Force-deleting an attendee (and `events:repair --orphans`) announces each released RSVP like any other way out: `RsvpChanged`, plus `RsvpCancelled` with `wasPaid` for a seat that was paid for — the refund trigger was missing. The RSVP row is gone by the time listeners run; the event carries the model with its payment reference.
+- `Events::fake()` records the parts of a builder chain (`Events::make()->coHostedBy()->tier()->poster()->category()->labels()->create()`) as `AddCoHost`, `CreateTier`, `SetPoster`, `Categorize` and `AttachLabels`, as its docs promise: `assertNoTierCreated()` and the like no longer pass after a builder created one.
 
 ## 1.0.0 - 2026-10-20
 

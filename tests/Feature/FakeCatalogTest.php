@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use PHPUnit\Framework\ExpectationFailedException;
 use RoundlyConsulting\Events\DataTransferObjects\UpdateEventData;
 use RoundlyConsulting\Events\DataTransferObjects\UpdateTierData;
@@ -15,6 +17,7 @@ use RoundlyConsulting\Events\Models\Event;
 use RoundlyConsulting\Events\Models\Venue;
 use RoundlyConsulting\Events\Testing\EventsFake;
 use RoundlyConsulting\Events\Testing\RecordedEventOperation;
+use RoundlyConsulting\Events\Tests\Fixtures\Models\Team;
 use RoundlyConsulting\Events\Tests\Fixtures\Models\User;
 use RoundlyConsulting\Events\Tests\Fixtures\Payments\FakePaymentCollector;
 use RoundlyConsulting\Events\Tests\Support\Scenarios;
@@ -374,4 +377,36 @@ test('the_attendee_deletion_hook_is_recorded', function (): void {
 
     expect($fake->recorded(EventOperation::ForgetAttendee)[0]->result)->toBe(1)
         ->and($event->fresh()?->going_count)->toBe(0);
+});
+
+test('builder_sub_operations_are_recorded', function (): void {
+    Storage::fake('local');
+    $music = Events::categories()->make('Music')->findOrCreate();
+    $fake = Events::fake();
+    $organizer = User::factory()->create();
+    $team = Team::factory()->create();
+
+    // One builder chain: the event, a co-host, a ticket type, a poster, a category and a label.
+    $event = Events::make('Meetup')->organizedBy($organizer)->coHostedBy($team)
+        ->at(Venue::factory()->create(['timezone' => 'Europe/Bratislava']))
+        ->startsAt('2027-02-10 20:00')->duration('2 hours')
+        ->tier('VIP', price: Money::ofMajor('10', 'EUR'), key: 'vip')
+        ->poster(UploadedFile::fake()->image('poster.jpg', 1200, 800))
+        ->category($music)
+        ->labels(['outdoor'])
+        ->create();
+
+    $fake->assertCreated(static fn (Event $created): bool => $created->is($event));
+    $fake->assertCoHostAdded($event, $team);
+    $fake->assertTierCreated(static fn (AdmissionTier $tier): bool => $tier->key === 'vip');
+    $fake->assertPosterChanged($event, removed: false);
+    $fake->assertCategorized($event, $music);
+    $fake->assertLabelled($event, ['outdoor']);
+
+    foreach (['assertNoCoHostAdded', 'assertNoTierCreated', 'assertNoPosterChanged', 'assertNothingCategorized', 'assertNothingLabelled'] as $negative) {
+        expect(fn () => $fake->{$negative}())->toThrow(ExpectationFailedException::class);
+    }
+
+    // Each sub-operation names the event and the builder's actor.
+    expect(array_map(static fn (RecordedEventOperation $recorded): bool => $recorded->concerns($event), $fake->recorded()))->each->toBeTrue();
 });
