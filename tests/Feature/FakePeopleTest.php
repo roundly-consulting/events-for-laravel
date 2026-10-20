@@ -3,8 +3,10 @@
 declare(strict_types=1);
 
 use PHPUnit\Framework\ExpectationFailedException;
+use RoundlyConsulting\Events\Enums\EventOperation;
 use RoundlyConsulting\Events\Facades\Events;
 use RoundlyConsulting\Events\Testing\EventsFake;
+use RoundlyConsulting\Events\Testing\RecordedEventOperation;
 use RoundlyConsulting\Events\Tests\Fixtures\Models\User;
 use RoundlyConsulting\Events\Tests\Support\Scenarios;
 
@@ -151,4 +153,22 @@ test('a_repeat_scan_satisfies_assert_nothing_checked_in', function (): void {
 
     $fake->assertCheckedIn($event, $walkIn);
     expect(fn () => $fake->assertNothingCheckedIn())->toThrow(ExpectationFailedException::class);
+});
+
+test('a_check_in_by_code_records_its_event', function (): void {
+    $organizer = User::factory()->create();
+    $event = Scenarios::event(capacity: 5, organizer: $organizer);
+    $other = Scenarios::event(capacity: 5);
+    $code = (string) Events::for($event)->rsvp(User::factory()->create())->going()->checkInCode();
+    Scenarios::minutesBeforeStart($event, 30);
+    $fake = Events::fake();
+
+    // The unscoped scan (`Events::checkIn($code, by:)`) finds the event from the code.
+    Events::checkIn($code, by: $organizer);
+
+    $recorded = $fake->recorded(EventOperation::CheckIn)[0] ?? null;
+    expect($recorded?->event()?->is($event))->toBeTrue()
+        ->and($recorded?->concerns($event))->toBeTrue()
+        ->and($recorded?->concerns($other))->toBeFalse();
+    $fake->assertPerformed(EventOperation::CheckIn, static fn (RecordedEventOperation $operation): bool => $operation->concerns($event));
 });

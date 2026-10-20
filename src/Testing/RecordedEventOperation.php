@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace RoundlyConsulting\Events\Testing;
 
 use Illuminate\Database\Eloquent\Model;
+use RoundlyConsulting\Events\DataTransferObjects\CheckInResult;
 use RoundlyConsulting\Events\Enums\EventOperation;
 use RoundlyConsulting\Events\Models\Event;
 use RoundlyConsulting\Events\Models\Rsvp;
@@ -30,11 +31,15 @@ final readonly class RecordedEventOperation
 
     /**
      * The event the operation ran on (or created) — for a call that only returned an RSVP (an
-     * invitation accepted from its link), that RSVP's event.
+     * invitation accepted from its link) or a check-in (a scan by code alone), that RSVP's event.
      */
     public function event(): ?Event
     {
         $event = $this->context['event'] ?? $this->result;
+
+        if ($event instanceof CheckInResult) {
+            $event = $event->rsvp;
+        }
 
         if ($event instanceof Rsvp) {
             $event = $event->event;
