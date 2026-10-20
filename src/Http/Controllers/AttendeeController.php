@@ -23,7 +23,9 @@ use RoundlyConsulting\Events\Support\EventTransaction;
 
 /**
  * The guest list. Managers see every RSVP with its check-in record (never the codes); others
- * see the going attendees as the event's `guest_list` allows. Interested people are managers'.
+ * see the going attendees as the event's `guest_list` allows. Interested people are managers',
+ * and so are the `status`, `checked_in` and `tier` filters — for everyone else they are ignored
+ * (they would tell who is at the venue, or who holds a hidden ticket type).
  *
  * @internal
  */
@@ -48,11 +50,11 @@ final class AttendeeController extends Controller
         $query = $model->rsvps()->with(['attendee', 'tier', 'checkedInBy'])->orderBy('id')
             ->where('status', ($manager ? ($status ?? RsvpStatus::Going) : RsvpStatus::Going)->value);
 
-        if ($request->checkedIn() !== null) {
+        if ($manager && $request->checkedIn() !== null) {
             $request->checkedIn() ? $query->whereNotNull('checked_in_at') : $query->whereNull('checked_in_at');
         }
 
-        if ($request->tier() !== null) {
+        if ($manager && $request->tier() !== null) {
             $query->whereHas('tier', static fn ($tiers) => $tiers->where('key', $request->tier()));
         }
 

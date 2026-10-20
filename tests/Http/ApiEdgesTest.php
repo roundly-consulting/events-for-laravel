@@ -2,10 +2,20 @@
 
 declare(strict_types=1);
 
+use RoundlyConsulting\Events\DataTransferObjects\UpdateEventData;
+use RoundlyConsulting\Events\DataTransferObjects\UpdateTierData;
+use RoundlyConsulting\Events\Enums\GuestList;
+use RoundlyConsulting\Events\Exceptions\InvalidEventScheduleException;
+use RoundlyConsulting\Events\Exceptions\InvalidTierException;
 use RoundlyConsulting\Events\Facades\Events;
+use RoundlyConsulting\Events\Models\Event;
+use RoundlyConsulting\Events\Tests\Fixtures\Models\Team;
 use RoundlyConsulting\Events\Tests\Fixtures\Models\User;
 use RoundlyConsulting\Events\Tests\Fixtures\Payments\FakePaymentCollector;
 use RoundlyConsulting\Events\Tests\Support\Scenarios;
+use RoundlyConsulting\Geolocation\DataTransferObjects\Location;
+use RoundlyConsulting\Geolocation\Enum\GeolocationType;
+use RoundlyConsulting\Geolocation\Facades\Geolocation;
 use RoundlyConsulting\Money\Money;
 
 beforeEach(function (): void {
@@ -31,4 +41,26 @@ test('a_paid_party_grows_by_hand_over_the_api_too', function (): void {
         ->assertJsonPath('code', 'invalid_rsvp_transition');
 
     expect($event->fresh()?->seats_taken)->toBe(1);
+});
+
+test('guest_list_filters_are_managers_only', function (): void {
+    $event = Scenarios::event(capacity: 10, organizer: $this->organizer);
+    Events::for($event)->update(new UpdateEventData(guestList: GuestList::Public));
+    Events::for($event)->tiers()->add('General', key: 'general');
+    Events::for($event)->tiers()->add('Press', hidden: true, key: 'press');
+    $journalist = User::factory()->create();
+    Events::for($event)->attendees()->add($journalist, tier: 'press');
+    Events::for($event)->attendees()->checkIn($journalist);
+    Events::for($event)->rsvp(User::factory()->create())->going(tier: 'general');
+    $uri = "/api/events/{$event->uuid}/attendees";
+    $outsider = User::factory()->create();
+
+    // Outsiders always get the whole public list: the filters are ignored for them.
+    foreach (['?tier=press', '?tier=general', '?checked_in=1', '?checked_in=0', '?tier=nope'] as $filter) {
+        $this->actingAs($outsider)->getJson($uri.$filter)->assertOk()->assertJsonCount(2, 'data');
+    }
+
+    // The organizer still narrows the list.
+    $this->actingAs($this->organizer)->getJson($uri.'?tier=press')->assertOk()->assertJsonCount(1, 'data');
+    $this->actingAs($this->organizer)->getJson($uri.'?checked_in=1')->assertOk()->assertJsonCount(1, 'data');
 });
