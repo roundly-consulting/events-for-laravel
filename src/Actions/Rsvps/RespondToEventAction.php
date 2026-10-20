@@ -118,10 +118,17 @@ final readonly class RespondToEventAction
                 return;
             }
 
-            if ($current === RsvpStatus::Going && $tierId !== $currentTier
-                && ($target === RsvpStatus::Held || ! ($book->tier($currentTier)?->isFree() ?? true))) {
+            $paidSeat = ! ($book->tier($currentTier)?->isFree() ?? true);
+
+            if ($current === RsvpStatus::Going && $tierId !== $currentTier && ($target === RsvpStatus::Held || $paidSeat)) {
                 // No orders, no price difference to collect: a paid ticket type changes by hand.
                 throw InvalidRsvpTransitionException::paidTierChange();
+            }
+
+            if ($current === RsvpStatus::Going && $paidSeat && $party !== $currentParty) {
+                // The same for the party of a paid seat: more people were never paid for, fewer
+                // leave nothing to refund. The organizer changes it by hand (`changeGuests()`).
+                throw InvalidRsvpTransitionException::paidPartyChange();
             }
 
             if (! $book->fitsReplacing($party, $tierId, $currentParty, $currentTier)) {

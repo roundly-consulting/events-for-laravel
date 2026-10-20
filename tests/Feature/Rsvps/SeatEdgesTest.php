@@ -22,6 +22,50 @@ beforeEach(function (): void {
 
 afterEach(fn () => Scenarios::thaw());
 
+test('a_paid_going_party_changes_only_by_hand', function (): void {
+    $event = Scenarios::event(capacity: 10, maxGuests: 3);
+    Events::for($event)->tiers()->add('Supporter', price: Money::ofMajor('15', 'EUR'), key: 'supporter');
+    $user = User::factory()->create();
+
+    $held = Events::for($event)->rsvp($user)->going(tier: 'supporter', guests: 1);
+    Events::rsvps()->confirmPayment((string) $held->payment_reference);
+
+    // More people for the price of two, or fewer with nothing to refund: both by hand.
+    expect(fn () => Events::for($event)->rsvp($user)->by($user)->going(guests: 3))->toThrow(InvalidRsvpTransitionException::class)
+        ->and(fn () => Events::for($event)->rsvp($user)->by($user)->going(guests: 0))->toThrow(InvalidRsvpTransitionException::class);
+
+    $fresh = $held->fresh();
+    expect($fresh?->status)->toBe(RsvpStatus::Going)
+        ->and($fresh?->partySize())->toBe(2)
+        ->and($event->fresh()?->seats_taken)->toBe(2);
+
+    // The same answer again is still the no-op, and the organizer changes the party by hand.
+    expect(Events::for($event)->rsvp($user)->by($user)->going(guests: 1)->partySize())->toBe(2)
+        ->and(Events::for($event)->attendees()->changeGuests($user, 3)->partySize())->toBe(4);
+});
+
+test('a_comp_seat_on_a_paid_ticket_type_grows_only_by_hand', function (): void {
+    $event = Scenarios::event(capacity: 10, maxGuests: 3);
+    Events::for($event)->tiers()->add('Supporter', price: Money::ofMajor('15', 'EUR'), key: 'supporter');
+    $user = User::factory()->create();
+    Events::for($event)->attendees()->add($user, tier: 'supporter');
+
+    expect(fn () => Events::for($event)->rsvp($user)->by($user)->going(guests: 2))->toThrow(InvalidRsvpTransitionException::class);
+});
+
+test('a_held_paid_party_change_is_a_new_hold', function (): void {
+    $event = Scenarios::event(capacity: 10, maxGuests: 3);
+    Events::for($event)->tiers()->add('Supporter', price: Money::ofMajor('15', 'EUR'), key: 'supporter');
+    $user = User::factory()->create();
+
+    $held = Events::for($event)->rsvp($user)->going(tier: 'supporter');
+    $bigger = Events::for($event)->rsvp($user)->by($user)->going(guests: 2);
+
+    expect($bigger->status)->toBe(RsvpStatus::Held)
+        ->and($bigger->amount?->toDecimal())->toBe('45.00')
+        ->and($bigger->payment_reference)->not->toBe($held->payment_reference);
+});
+
 test('an_attendee_keeps_their_own_ticket_type_after_its_sale_ended', function (): void {
     $event = Scenarios::event(capacity: 50, maxGuests: 3);
     Events::for($event)->tiers()->add('Early bird', key: 'early');

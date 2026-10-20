@@ -69,6 +69,7 @@ return [
 
     'rsvp_checked_in' => 'A checked-in attendee cannot leave the event.',
     'rsvp_paid_tier_change' => 'A ticket type with a price can only be changed by the organizer.',
+    'rsvp_paid_party_change' => 'The party on a ticket type with a price can only be changed by the organizer.',
     'rsvp_not_held' => 'The RSVP is not waiting for a payment.',
     'rsvp_not_going' => 'The attendee is not going.',
     'rsvp_not_waitlisted' => 'The attendee is not on the waitlist.',

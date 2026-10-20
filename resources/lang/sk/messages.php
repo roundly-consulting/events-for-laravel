@@ -69,6 +69,7 @@ return [
 
     'rsvp_checked_in' => 'Účastník, ktorý už prišiel, nemôže z podujatia odísť.',
     'rsvp_paid_tier_change' => 'Platený typ vstupenky môže zmeniť len organizátor.',
+    'rsvp_paid_party_change' => 'Počet osôb na platenej vstupenke môže zmeniť len organizátor.',
     'rsvp_not_held' => 'Rezervácia nečaká na platbu.',
     'rsvp_not_going' => 'Účastník sa nezúčastní.',
     'rsvp_not_waitlisted' => 'Účastník nie je na čakacej listine.',
