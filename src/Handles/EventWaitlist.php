@@ -39,7 +39,8 @@ final readonly class EventWaitlist
 
     /**
      * Move the queue up into free seats by hand: first fit in order, at most `$limit` — after the
-     * automatic cutoff, or with automatic promotion off.
+     * automatic cutoff, or with automatic promotion off. From the start on, places of a paid
+     * ticket type stay waiting (a hold would already be over).
      *
      * @return Collection<int, Rsvp>
      */

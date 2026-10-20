@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Carbon\CarbonImmutable;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\Event as EventBus;
+use Illuminate\Support\Facades\Notification;
 use RoundlyConsulting\Events\DataTransferObjects\UpdateEventData;
 use RoundlyConsulting\Events\Enums\RsvpStatus;
 use RoundlyConsulting\Events\Events\RsvpCancelled;
@@ -13,6 +14,8 @@ use RoundlyConsulting\Events\Exceptions\RsvpClosedException;
 use RoundlyConsulting\Events\Exceptions\RsvpNotFoundException;
 use RoundlyConsulting\Events\Facades\Events;
 use RoundlyConsulting\Events\Models\Event;
+use RoundlyConsulting\Events\Models\Rsvp;
+use RoundlyConsulting\Events\Notifications\WaitlistPromotedNotification;
 use RoundlyConsulting\Events\Tests\Fixtures\Models\User;
 use RoundlyConsulting\Events\Tests\Fixtures\Payments\FakePaymentCollector;
 use RoundlyConsulting\Events\Tests\Support\Scenarios;
@@ -227,4 +230,32 @@ test('a_door_confirmation_without_a_reference_drops_the_online_checkout', functi
         ->and($confirmed->fresh()?->amount?->toDecimal())->toBe('15.00');
     Events::for($event)->attendees()->remove($card);
     EventBus::assertDispatched(RsvpCancelled::class, static fn (RsvpCancelled $cancelled): bool => $cancelled->wasPaid);
+});
+
+test('a_manual_promotion_after_the_start_creates_no_dead_hold', function (): void {
+    Notification::fake();
+    $event = supporterEvent(capacity: 1);
+    Events::for($event)->tiers()->add('Free', key: 'free');
+    $payer = User::factory()->create();
+    $waiting = User::factory()->create();
+    $free = User::factory()->create();
+    $held = Events::for($event)->rsvp($payer)->going(tier: 'supporter');
+    Events::rsvps()->confirmPayment((string) $held->fresh()?->payment_reference);
+    Events::for($event)->rsvp($waiting)->going(tier: 'supporter');
+    Events::for($event)->rsvp($free)->going(tier: 'free');
+
+    // Ten minutes in, a seat frees up and the organizer promotes by hand.
+    Scenarios::freeze($event->starts_at->addMinutes(10)->format('Y-m-d H:i:s'));
+    Events::for($event)->attendees()->remove($payer);
+    $calls = count(FakePaymentCollector::$calls);
+    $promoted = Events::for($event)->waitlist()->promote();
+
+    // A paid place cannot be held past the start: it keeps its place, no checkout, no pay link.
+    expect($waiting->rsvpFor($event)?->status)->toBe(RsvpStatus::Waitlisted)
+        ->and(FakePaymentCollector::$calls)->toHaveCount($calls);
+    Notification::assertNotSentTo($waiting, WaitlistPromotedNotification::class);
+
+    // A free one still moves up.
+    expect($promoted->map(static fn (Rsvp $rsvp): mixed => $rsvp->attendee_id)->all())->toBe([$free->getKey()])
+        ->and($free->rsvpFor($event)?->status)->toBe(RsvpStatus::Going);
 });

@@ -23,7 +23,8 @@ use RoundlyConsulting\Events\Support\SeatBook;
  *
  * Automatic promotion runs only when the event allows it, while the event is on, and until
  * `waitlist.stop_promoting_before` the start; a manual promotion (`waitlist()->promote()`) ignores
- * the cutoff. Promotion ignores the ticket type's sale window: the place was taken while on sale.
+ * the cutoff, but from the start on it moves up free places only (a paid one cannot be held any
+ * more). Promotion ignores the ticket type's sale window: the place was taken while on sale.
  *
  * @internal
  */
@@ -73,6 +74,12 @@ final readonly class AutoPromoteAction
 
             $tier = $book->tier($tierId);
             $to = $tier !== null && ! $tier->isFree() ? RsvpStatus::Held : RsvpStatus::Going;
+
+            // A hold ends at the start at the latest: from then on a paid place would be held
+            // already lapsed, with a pay link whose payment is refused. It keeps its place.
+            if ($to === RsvpStatus::Held && ! Clock::now()->lessThan($event->starts_at)) {
+                continue;
+            }
 
             $this->seats->execute($book, $candidate, $to, $candidate->guests, $tierId, promotion: true);
 

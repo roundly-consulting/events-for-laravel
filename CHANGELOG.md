@@ -31,6 +31,7 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 - Sending an invitation again after it was accepted mails the new link (it was minted but the notice was dropped at delivery). An invitation notice whose link died before delivery — sent again, or answered meanwhile — is no longer mailed.
 - JSON-LD of a rescheduled all-day event gives the announced first day as `previousStartDate` instead of repeating the new `startDate`.
 - Two status changes of one event inside one surrounding transaction (a silent reschedule, then a cancellation or a postponement) keep their own details: the reschedule stays silent with the right `previousStartsAt`, and the cancellation reports the holds it released.
+- A manual `waitlist()->promote()` from the event's start on skips places of a paid ticket type (they keep their place): it no longer creates a hold that has already lapsed and mails a pay link whose payment is refused. Free places still move up.
 
 ## 1.0.0 - 2026-10-20
 
