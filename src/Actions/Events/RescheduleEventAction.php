@@ -8,6 +8,7 @@ use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Database\Eloquent\Model;
+use RoundlyConsulting\Events\Actions\Internal\CapHoldsAtStartAction;
 use RoundlyConsulting\Events\Actions\Internal\ResolveScheduleAction;
 use RoundlyConsulting\Events\DataTransferObjects\ResolvedSchedule;
 use RoundlyConsulting\Events\DataTransferObjects\ScheduleData;
@@ -19,6 +20,7 @@ use RoundlyConsulting\Events\Support\EventStates;
 use RoundlyConsulting\Events\Support\EventTransaction;
 use RoundlyConsulting\Events\Support\EventTransitions;
 use RoundlyConsulting\Events\Support\LockedEvent;
+use RoundlyConsulting\Events\Support\SeatBook;
 
 /**
  * Gives an event a new date. Times are read in the event's timezone (an instant stays an
@@ -27,7 +29,8 @@ use RoundlyConsulting\Events\Support\LockedEvent;
  * Atomic: under the event's lock it writes the new times, keeps the originally announced start
  * in `previous_starts_at` (the first reschedule only, per schema.org), then applies the lifecycle's reschedule transition in the same transaction — a
  * denial rolls the times back. Every write of `ends_at` is an Eloquent save, so the automatic
- * completion follows it.
+ * completion follows it. The doors time is cleared (an old one could lie outside the new
+ * window); holds ending after an earlier new start end at it.
  *
  * A draft has announced nothing: it is just edited, no transition is applied.
  */
@@ -35,6 +38,7 @@ final readonly class RescheduleEventAction
 {
     public function __construct(
         private ResolveScheduleAction $schedules,
+        private CapHoldsAtStartAction $holds,
         private Dispatcher $events,
     ) {}
 
@@ -72,6 +76,7 @@ final readonly class RescheduleEventAction
                 $locked->ends_at = $schedule->endsAt;
                 $locked->doors_open_at = null;
                 $locked->save();
+                $this->holds->execute(SeatBook::open($locked));
             },
         );
 
@@ -87,6 +92,7 @@ final readonly class RescheduleEventAction
             $event->starts_at = $schedule->startsAt;
             $event->ends_at = $schedule->endsAt;
             $event->save();
+            $this->holds->execute(SeatBook::open($event));
 
             $this->events->dispatch(new EventUpdated($event, ['starts_at', 'ends_at'], $actor, $silent));
 

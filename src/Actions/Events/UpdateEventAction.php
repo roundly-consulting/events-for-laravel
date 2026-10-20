@@ -7,6 +7,7 @@ namespace RoundlyConsulting\Events\Actions\Events;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Database\Eloquent\Model;
 use RoundlyConsulting\Events\Actions\Internal\AutoPromoteAction;
+use RoundlyConsulting\Events\Actions\Internal\CapHoldsAtStartAction;
 use RoundlyConsulting\Events\Actions\Internal\ResolveScheduleAction;
 use RoundlyConsulting\Events\DataTransferObjects\ResolvedSchedule;
 use RoundlyConsulting\Events\DataTransferObjects\ScheduleData;
@@ -41,6 +42,7 @@ final readonly class UpdateEventAction
     public function __construct(
         private ResolveScheduleAction $schedules,
         private AutoPromoteAction $promote,
+        private CapHoldsAtStartAction $holds,
         private Dispatcher $events,
     ) {}
 
@@ -71,6 +73,11 @@ final readonly class UpdateEventAction
             // An Eloquent save, never a quiet or query-builder write: lifecycle re-arms the
             // automatic completion when ends_at changes.
             $event->save();
+
+            // A draft's test holds end at its new start too.
+            if (in_array('starts_at', $changed, true)) {
+                $this->holds->execute(SeatBook::open($event));
+            }
 
             // More room (a higher or no capacity) lets the waitlist move up.
             if (in_array('capacity', $changed, true)) {

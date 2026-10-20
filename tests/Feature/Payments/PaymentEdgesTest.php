@@ -76,6 +76,33 @@ test('a_paid_seat_keeps_its_payment', function (): void {
     EventBus::assertDispatched(RsvpCancelled::class, static fn (RsvpCancelled $cancelled): bool => $cancelled->wasPaid);
 });
 
+test('holds_end_at_the_rescheduled_start', function (): void {
+    $event = supporterEvent();
+    $held = Events::for($event)->rsvp(User::factory()->create())->going(tier: 'supporter');
+    expect($held->held_until?->format('Y-m-d H:i'))->toBe('2027-01-01 12:30');
+
+    // Moved up to 13:10 Bratislava (12:10 UTC); the hold would still run until 12:30.
+    Events::for($event)->reschedule('2027-01-01 13:10');
+    expect($held->fresh()?->held_until?->format('Y-m-d H:i'))->toBe('2027-01-01 12:10');
+
+    CarbonImmutable::setTestNow(CarbonImmutable::parse('2027-01-01 12:15:00', 'UTC'));
+
+    expect(fn () => Events::rsvps()->confirmPayment((string) $held->payment_reference))->toThrow(RsvpClosedException::class)
+        ->and($held->fresh()?->status)->not->toBe(RsvpStatus::Going);
+});
+
+test('a_draft_test_hold_ends_at_the_new_start', function (): void {
+    $draft = Scenarios::event(capacity: 10, publish: false);
+    Events::for($draft)->tiers()->add('Supporter', price: Money::ofMajor('15', 'EUR'), key: 'supporter');
+    $held = Events::for($draft)->rsvp($draft->organizer)->going(tier: 'supporter');
+
+    Events::for($draft)->reschedule('2027-01-01 13:10');
+    expect($held->fresh()?->held_until?->format('H:i'))->toBe('12:10');
+
+    Events::for($draft)->update(new UpdateEventData(startsAt: '2027-01-01 13:05'));
+    expect($held->fresh()?->held_until?->format('H:i'))->toBe('12:05');
+});
+
 test('a_hold_expired_by_a_webhook_promotes_the_waitlist', function (): void {
     $event = supporterEvent(capacity: 2);
     $lapsing = User::factory()->create();
