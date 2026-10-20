@@ -76,3 +76,21 @@ test('handle_reads_with_an_actor_check_the_policy', function (): void {
     expect($as->attendees()->going())->toHaveCount(1)
         ->and(fn () => Events::for(Scenarios::event(publish: false))->by($outsider)->hosts()->all())->toThrow(AuthorizationException::class);
 });
+
+test('a_draft_made_online_is_scheduled_not_moved_online', function (): void {
+    EventBus::fake([EventMovedOnline::class, EventUpdated::class]);
+    $draft = Scenarios::event(publish: false);
+    Events::for($draft)->moveOnline('https://meet.example.com/abc');
+    Events::for($draft)->publish();
+    $fresh = $draft->fresh();
+
+    expect($fresh?->moved_online_at)->toBeNull()
+        ->and($fresh?->online_url)->toBe('https://meet.example.com/abc')
+        ->and(Events::jsonLd($fresh ?? $draft)['eventStatus'] ?? null)->toBe('https://schema.org/EventScheduled');
+    EventBus::assertNotDispatched(EventMovedOnline::class);
+    EventBus::assertDispatched(EventUpdated::class, static fn (EventUpdated $updated): bool => in_array('online_url', $updated->changed, true));
+
+    // An announced event that moves is still "moved online".
+    Events::for($fresh ?? $draft)->moveOnline('https://meet.example.com/xyz');
+    expect(Events::jsonLd($draft->fresh() ?? $draft)['eventStatus'] ?? null)->toBe('https://schema.org/EventMovedOnline');
+});
