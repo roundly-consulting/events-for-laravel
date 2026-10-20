@@ -30,7 +30,8 @@ use RoundlyConsulting\Events\Support\WallClock;
 
 /**
  * Changes an event: only the fields given. A new start on a published event is refused —
- * `reschedule()` keeps the announced date and tells attendees. An end, a doors time or a
+ * `reschedule()` keeps the announced date and tells attendees; repeating the current start is
+ * not a new one. An end, a doors time or a
  * timezone change (instants kept, local dates recomputed) is an ordinary update; a time, venue
  * or online-link change raises the calendar `sequence`. A higher capacity lets the waitlist move up. Fires `EventUpdated` with the changed attributes, nothing when nothing changed.
  */
@@ -51,7 +52,7 @@ final readonly class UpdateEventAction
         return EventTransaction::run($event, function () use ($event, $data, $actor, $silent): Event {
             LockedEvent::lock($event);
 
-            if ($data->movesStart() && $event->phase !== EventPhase::Draft) {
+            if ($event->phase !== EventPhase::Draft && $this->movesStart($event, $data)) {
                 throw InvalidEventException::useReschedule();
             }
 
@@ -124,6 +125,29 @@ final readonly class UpdateEventAction
             $explicit = $data->attendanceMode instanceof NotGiven ? null : $data->attendanceMode;
             $event->attendance_mode = EventInput::attendanceMode($explicit, $event->venue_id !== null, $event->online_url !== null);
         }
+    }
+
+    /**
+     * Whether the change names a start other than the current one (read in the timezone the
+     * change leaves the event in).
+     */
+    private function movesStart(Event $event, UpdateEventData $data): bool
+    {
+        if (! $data->movesStart()) {
+            return false;
+        }
+
+        $timezone = $data->timezone instanceof NotGiven ? $event->timezone : $data->timezone;
+
+        if (! Timezones::isValid($timezone)) {
+            throw InvalidEventScheduleException::invalidTimezone($timezone);
+        }
+
+        if (! $data->allDayFrom instanceof NotGiven) {
+            return ! $event->all_day || trim($data->allDayFrom) !== $event->starts_on;
+        }
+
+        return ! $data->startsAt instanceof NotGiven && ! WallClock::toUtc($data->startsAt, $timezone)->equalTo($event->starts_at);
     }
 
     private function schedule(Event $event, UpdateEventData $data): void
