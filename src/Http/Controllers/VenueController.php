@@ -57,7 +57,9 @@ final class VenueController extends Controller
 
     public function update(VenueRequest $request, string $venue): JsonResponse
     {
-        $updated = $this->manager()->venues()->by($this->actor($request))->update($this->venue($venue), $request->toUpdate());
+        $venues = $this->manager()->venues()->by($this->actor($request));
+        $model = $this->venue($venue);
+        $updated = $venues->update($model, $request->toUpdate($model));
 
         return new JsonResponse(['data' => (new VenueResource($updated))->resolve($request)]);
     }

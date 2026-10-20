@@ -132,3 +132,17 @@ test('organizer_filters_are_no_existence_oracle', function (): void {
     $this->get('/api/events/feed.ics?organizer=user:abc')->assertStatus(422);
     $this->getJson('/api/events?filter[organizer]=robot:1')->assertStatus(422);
 });
+
+test('a_partial_address_patch_keeps_the_other_fields', function (): void {
+    $venue = Events::venues()->make('Blue Note')->ownedBy($this->organizer)
+        ->address(street: 'Hlavná 1', city: 'Bratislava', postalCode: '811 01', country: 'SK')
+        ->timezone('Europe/Bratislava')->create();
+
+    $this->actingAs($this->organizer)->patchJson("/api/event-venues/{$venue->getKey()}", ['city' => 'Košice'])->assertOk();
+    $fresh = $venue->fresh();
+    expect([$fresh?->street, $fresh?->city, $fresh?->postal_code, $fresh?->country_code])->toBe(['Hlavná 1', 'Košice', '811 01', 'SK']);
+
+    // A field sent as null clears just that field.
+    $this->actingAs($this->organizer)->patchJson("/api/event-venues/{$venue->getKey()}", ['street' => null])->assertOk();
+    expect([$venue->fresh()?->street, $venue->fresh()?->city])->toBe([null, 'Košice']);
+});

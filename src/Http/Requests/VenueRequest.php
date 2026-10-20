@@ -8,13 +8,14 @@ use Illuminate\Database\Eloquent\Model;
 use RoundlyConsulting\Events\DataTransferObjects\AddressData;
 use RoundlyConsulting\Events\DataTransferObjects\UpdateVenueData;
 use RoundlyConsulting\Events\DataTransferObjects\VenueData;
+use RoundlyConsulting\Events\Models\Venue;
 use RoundlyConsulting\Events\Support\NotGiven;
 use RoundlyConsulting\Geolocation\Rules\CoordinatesRule;
 
 /**
- * A venue: create (`POST`) or change (`PATCH`, only the fields sent). A new venue is owned by the
- * caller unless the body names an `owner` (who must allow the caller) or asks for a `shared` one
- * (admins and the `shared_venues` ability).
+ * A venue: create (`POST`) or change (`PATCH`, only the fields sent — each address part on its
+ * own). A new venue is owned by the caller unless the body names an `owner` (who must allow the
+ * caller) or asks for a `shared` one (admins and the `shared_venues` ability).
  *
  * @internal
  */
@@ -64,18 +65,36 @@ final class VenueRequest extends EventsRequest
         );
     }
 
-    public function toUpdate(): UpdateVenueData
+    /**
+     * The change; address parts not sent keep the venue's stored values.
+     */
+    public function toUpdate(Venue $venue): UpdateVenueData
     {
         $data = $this->validated();
         $given = static fn (string $key): bool => array_key_exists($key, $data);
 
         return new UpdateVenueData(
             name: $given('name') ? $data['name'] : NotGiven::Value,
-            address: array_intersect(self::ADDRESS, array_keys($data)) !== [] ? $this->address($data) : NotGiven::Value,
+            address: array_intersect(self::ADDRESS, array_keys($data)) !== [] ? $this->address([...self::stored($venue), ...$data]) : NotGiven::Value,
             coordinates: $given('coordinates') ? self::coordinates($data['coordinates']) : NotGiven::Value,
             timezone: $given('timezone') ? (string) $data['timezone'] : NotGiven::Value,
             capacity: $given('capacity') ? ($data['capacity'] === null ? null : (int) $data['capacity']) : NotGiven::Value,
         );
+    }
+
+    /**
+     * @return array<string, string|null>
+     */
+    private static function stored(Venue $venue): array
+    {
+        return [
+            'street' => $venue->street,
+            'city' => $venue->city,
+            'region' => $venue->region,
+            'postal_code' => $venue->postal_code,
+            'country' => $venue->country_code,
+            'formatted_address' => $venue->formatted_address,
+        ];
     }
 
     /**
