@@ -10,11 +10,13 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
+use RoundlyConsulting\Events\Exceptions\InvalidTierException;
 use RoundlyConsulting\Events\Models\Event;
 use RoundlyConsulting\Events\Support\EventModels;
 use RoundlyConsulting\Events\Support\MorphAliases;
 use RoundlyConsulting\Geolocation\DataTransferObjects\Coordinates;
 use RoundlyConsulting\Money\Money;
+use Throwable;
 
 /**
  * The API's form requests: validation only — the policy runs in the handle, where PHP callers
@@ -106,7 +108,8 @@ abstract class EventsRequest extends FormRequest
     }
 
     /**
-     * A price: a decimal string in `events.tiers.default_currency`, or with its currency.
+     * A price: a decimal string in `events.tiers.default_currency`, or with its currency — more
+     * decimals than that currency has (`15.999` EUR, `15.5` JPY) is the same 422 either way.
      */
     protected static function price(mixed $amount, mixed $currency): Money|string|null
     {
@@ -114,7 +117,15 @@ abstract class EventsRequest extends FormRequest
             return null;
         }
 
-        return is_string($currency) && $currency !== '' ? Money::ofMajor((string) $amount, $currency) : (string) $amount;
+        if (! is_string($currency) || $currency === '') {
+            return (string) $amount;
+        }
+
+        try {
+            return Money::ofMajor((string) $amount, $currency);
+        } catch (Throwable) {
+            throw InvalidTierException::invalidPrice();
+        }
     }
 
     /**

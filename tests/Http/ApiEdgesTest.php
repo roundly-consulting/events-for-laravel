@@ -175,3 +175,25 @@ test('a_venue_patch_never_ignores_owner_shared_or_geocode', function (): void {
 
     expect($venue->fresh()?->city)->toBe('Košice')->and($venue->fresh()?->coordinates?->latitude)->toBe(48.7);
 });
+
+test('a_price_too_precise_for_its_currency_is_a_422', function (string $price, string $currency): void {
+    $event = Scenarios::event(organizer: $this->organizer);
+    $tier = Events::for($event)->tiers()->add('Standing', key: 'standing');
+    $uri = "/api/events/{$event->uuid}/tiers";
+
+    // More decimals than the currency has: the package's 422, never a 500.
+    $this->actingAs($this->organizer)->postJson($uri, ['name' => 'Paid', 'price' => $price, 'currency' => $currency])
+        ->assertStatus(422)->assertJsonPath('code', 'invalid_tier');
+    $this->actingAs($this->organizer)->patchJson("{$uri}/{$tier->key}", ['price' => $price, 'currency' => $currency])
+        ->assertStatus(422)->assertJsonPath('code', 'invalid_tier');
+    $this->actingAs($this->organizer)->postJson('/api/events', [
+        'title' => 'Gig', 'starts_at' => '2027-02-12 20:00',
+        'tiers' => [['name' => 'Paid', 'price' => $price, 'currency' => $currency]],
+    ])->assertStatus(422)->assertJsonPath('code', 'invalid_tier');
+
+    expect(Event::query()->count())->toBe(1)
+        ->and($tier->fresh()?->price)->toBeNull();
+})->with([
+    'three decimals in EUR' => ['15.999', 'EUR'],
+    'any decimal in JPY' => ['15.5', 'JPY'],
+]);
