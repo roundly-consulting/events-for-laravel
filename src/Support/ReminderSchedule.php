@@ -29,6 +29,22 @@ final class ReminderSchedule
         return $event->reminders ?? EventsConfig::reminderOffsets();
     }
 
+    /**
+     * What the reminders count back from, and nothing is sent at or after: the start — for an
+     * all-day event, `events.reminders.all_day_at` on its first day (after its local midnight
+     * start, so `PT1H` is 08:00 on the day).
+     */
+    public static function anchor(Event $event): CarbonImmutable
+    {
+        if (! $event->all_day) {
+            return $event->starts_at;
+        }
+
+        [$hour, $minute] = EventsConfig::allDayReminderAt();
+
+        return CarbonImmutable::parse((string) $event->starts_on, $event->timezone)->setTime($hour, $minute)->utc();
+    }
+
     public static function dueAt(Event $event, string $offset): ?CarbonImmutable
     {
         $interval = Durations::iso($offset);
@@ -37,14 +53,7 @@ final class ReminderSchedule
             return null;
         }
 
-        $timezone = $event->timezone;
-
-        if ($event->all_day) {
-            [$hour, $minute] = EventsConfig::allDayReminderAt();
-            $base = CarbonImmutable::parse((string) $event->starts_on, $timezone)->setTime($hour, $minute);
-        } else {
-            $base = $event->starts_at->setTimezone($timezone);
-        }
+        $base = self::anchor($event)->setTimezone($event->timezone);
 
         $days = CarbonInterval::create($interval->y, $interval->m, 0, $interval->d);
         $time = CarbonInterval::create(0, 0, 0, 0, $interval->h, $interval->i, $interval->s);

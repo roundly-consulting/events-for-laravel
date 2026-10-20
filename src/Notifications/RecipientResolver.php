@@ -16,6 +16,7 @@ use RoundlyConsulting\Events\Models\Rsvp;
 use RoundlyConsulting\Events\Support\Clock;
 use RoundlyConsulting\Events\Support\EventsConfig;
 use RoundlyConsulting\Events\Support\EventVisibility;
+use RoundlyConsulting\Events\Support\ReminderSchedule;
 
 /**
  * Who hears about an event-wide change: the attendees whose RSVP status is in the type's
@@ -113,7 +114,7 @@ final class RecipientResolver
             'waitlist_promoted' => in_array($status, [RsvpStatus::Going, RsvpStatus::Held], true),
             'reminder' => $status === RsvpStatus::Going
                 && in_array($event->phase, [EventPhase::Scheduled, EventPhase::Rescheduled], true)
-                && $event->starts_at->greaterThan(Clock::now()),
+                && ReminderSchedule::anchor($event)->greaterThan(Clock::now()),
             'cancelled' => $status !== null && ($status === RsvpStatus::Expired || in_array($status, self::statuses($type), true)),
             default => $status !== null && in_array($status, self::statuses($type), true),
         };

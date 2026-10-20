@@ -76,7 +76,8 @@ final readonly class SweepEventsAction
     /**
      * Every reminder now due, exactly once. Skipped: an offset due before the current schedule
      * was announced (`max(published_at, rescheduled_at)`), one more than
-     * `events.reminders.max_lateness` late, and anything at or after the start.
+     * `events.reminders.max_lateness` late, and anything at or after the start (an all-day
+     * event's civil hour, {@see ReminderSchedule::anchor()}).
      *
      * @return array{0: int, 1: int}
      */
@@ -87,10 +88,12 @@ final readonly class SweepEventsAction
         $reminders = 0;
         $notified = 0;
 
-        // Offsets are at most P31D: nothing starting later can be due.
+        // Offsets are at most P31D: nothing starting later can be due. An all-day event's
+        // reminders count back from a civil hour on its first day, after its midnight start.
         EventModels::event()::query()
             ->inPhase(EventPhase::Scheduled, EventPhase::Rescheduled)
-            ->where('starts_at', '>', Clock::format($now))
+            ->where(static fn ($query) => $query->where('starts_at', '>', Clock::format($now))
+                ->orWhere(static fn ($allDay) => $allDay->where('all_day', true)->where('starts_at', '>', Clock::format($now->subDays(2)))))
             ->where('starts_at', '<=', Clock::format($now->addDays(32)))
             ->when($options->limit !== null, static fn ($query) => $query->limit((int) $options->limit))
             ->chunkById(max(1, $options->chunk), function ($events) use ($now, $lateness, &$reminders, &$notified): void {
@@ -116,7 +119,7 @@ final readonly class SweepEventsAction
             ? $event->rescheduled_at
             : $event->published_at;
 
-        if ($due === null || $due->greaterThan($now) || ! $event->starts_at->greaterThan($now)
+        if ($due === null || $due->greaterThan($now) || ! ReminderSchedule::anchor($event)->greaterThan($now)
             || ($announced !== null && $due->lessThan($announced))
             || $due->add($lateness)->lessThan($now)) {
             return null;
