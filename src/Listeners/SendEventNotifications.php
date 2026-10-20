@@ -108,7 +108,7 @@ final readonly class SendEventNotifications
     public function cancelled(EventCancelled $cancelled): void
     {
         if (! $cancelled->silent) {
-            $this->notifier->send('cancelled', $cancelled->event, RecipientResolver::audience('cancelled', $cancelled->event, $cancelled->actor), data: ['reason' => $cancelled->reason]);
+            $this->notifier->send('cancelled', $cancelled->event, RecipientResolver::audience('cancelled', $cancelled->event, $cancelled->actor, $cancelled->releasedHolds), data: ['reason' => $cancelled->reason]);
         }
     }
 

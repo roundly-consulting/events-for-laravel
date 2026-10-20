@@ -45,21 +45,22 @@ final class RecipientResolver
     }
 
     /**
+     * @param  list<int|string>  $released  the RSVPs whose holds a cancellation released
      * @return Collection<int, Model>
      */
-    public static function audience(string $type, Event $event, ?Model $actor = null): Collection
+    public static function audience(string $type, Event $event, ?Model $actor = null, array $released = []): Collection
     {
         $statuses = array_map(static fn (RsvpStatus $status): string => $status->value, self::statuses($type));
 
         $rsvps = $event->rsvps()
             ->with('attendee')
-            ->where(static function (Builder $query) use ($statuses, $type, $event): void {
+            ->where(static function (Builder $query) use ($statuses, $type, $released): void {
                 $query->whereIn('status', $statuses);
 
                 // A cancellation released the holds just before: those people are told too.
-                if ($type === 'cancelled' && in_array(RsvpStatus::Held->value, $statuses, true) && $event->cancelled_at !== null) {
+                if ($type === 'cancelled' && in_array(RsvpStatus::Held->value, $statuses, true) && $released !== []) {
                     $query->orWhere(static fn (Builder $expired): Builder => $expired->where('status', RsvpStatus::Expired->value)
-                        ->where('updated_at', '>=', $event->cancelled_at));
+                        ->whereKey($released));
                 }
             })
             ->orderBy('id')

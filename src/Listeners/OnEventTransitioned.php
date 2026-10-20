@@ -70,7 +70,7 @@ final readonly class OnEventTransitioned
                 $actor,
                 $note->silent,
             ),
-            EventPhase::Cancelled => new EventCancelled($event, $this->reason($transitioned), $actor, $note->silent),
+            EventPhase::Cancelled => new EventCancelled($event, $this->reason($transitioned), $actor, $note->silent, $note->releasedHolds),
             EventPhase::Completed => new EventCompleted($event, $actor),
         };
 

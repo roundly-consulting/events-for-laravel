@@ -42,8 +42,21 @@ final class TransitionNotes
         $note = $this->peek($event);
 
         if ($note !== null && $note->reschedule) {
-            $this->put($event, new TransitionNote($note->silent, $note->previousStartsAt));
+            $this->put($event, new TransitionNote($note->silent, $note->previousStartsAt, releasedHolds: $note->releasedHolds));
         }
+    }
+
+    /**
+     * Remember the RSVPs whose holds the transition released — also for a transition applied
+     * through lifecycle directly, which put no note.
+     *
+     * @param  list<int|string>  $ids
+     */
+    public function released(Event $event, array $ids): void
+    {
+        $note = $this->peek($event) ?? new TransitionNote;
+
+        $this->put($event, new TransitionNote($note->silent, $note->previousStartsAt, $note->reschedule, [...$note->releasedHolds, ...$ids]));
     }
 
     public function pull(Event $event): TransitionNote

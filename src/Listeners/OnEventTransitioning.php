@@ -7,9 +7,11 @@ namespace RoundlyConsulting\Events\Listeners;
 use RoundlyConsulting\Events\Actions\Internal\ExpireHoldsAction;
 use RoundlyConsulting\Events\Contracts\EventState;
 use RoundlyConsulting\Events\Enums\EventPhase;
+use RoundlyConsulting\Events\Enums\RsvpStatus;
 use RoundlyConsulting\Events\Models\Event;
 use RoundlyConsulting\Events\Support\EventModels;
 use RoundlyConsulting\Events\Support\SeatBook;
+use RoundlyConsulting\Events\Support\TransitionNotes;
 use RoundlyConsulting\Lifecycle\Events\LifecycleTransitioning;
 
 /**
@@ -23,6 +25,7 @@ final readonly class OnEventTransitioning
 {
     public function __construct(
         private ExpireHoldsAction $holds,
+        private TransitionNotes $notes,
     ) {}
 
     public function handle(LifecycleTransitioning $transitioning): void
@@ -46,10 +49,20 @@ final readonly class OnEventTransitioning
     /**
      * Every hold expires (no payment is collected for a cancelled event); going attendees keep their
      * RSVPs — they are told, and the host refunds the paid ones (`RsvpCancelled` is not fired for
-     * them: they did not leave).
+     * them: they did not leave). The released holds are noted by id, so their people are told too.
      */
     private function onCancelled(Event $event): void
     {
-        $this->holds->execute(SeatBook::open($event), all: true);
+        $book = SeatBook::open($event);
+        $held = EventModels::rsvp()::query()
+            ->where('event_id', $event->getKey())
+            ->where('status', RsvpStatus::Held->value)
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->pluck('id')
+            ->all();
+
+        $this->holds->execute($book, all: true);
+        $this->notes->released($event, array_values($held));
     }
 }
