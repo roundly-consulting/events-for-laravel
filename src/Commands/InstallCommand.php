@@ -10,15 +10,30 @@ use RoundlyConsulting\Events\Support\EventsConfig;
 
 /**
  * Publishes the config and the migrations events and its dependencies need, then prints the
- * next steps. Refuses when a configured table already exists (`events` is a common table name):
- * rename it in `events.tables.*` first. Re-running is safe — published files are kept.
+ * next steps. Refuses when a configured table already exists and is not the package's own
+ * (`events` is a common table name): rename it in `events.tables.*` first. Re-running is safe —
+ * published files are kept, and the package's own tables (after `migrate`) are recognised by
+ * their columns, so a later run publishes what is new (slug history's migrations, say).
  */
 final class InstallCommand extends Command
 {
     /** @var list<string> */
     public const array TAGS = ['events-config', 'lifecycle-migrations', 'tags-migrations', 'media-migrations', 'events-migrations'];
 
-    private const array TABLES = ['events', 'venues', 'tiers', 'rsvps', 'hosts', 'invitations', 'reminder_deliveries'];
+    /**
+     * Each table's columns no host table of that name is likely to have together.
+     *
+     * @var array<string, list<string>>
+     */
+    private const array TABLES = [
+        'events' => ['uuid', 'organizer_type', 'organizer_id', 'starts_at', 'ends_at', 'sequence', 'seats_taken'],
+        'venues' => ['owner_type', 'owner_id', 'formatted_address', 'timezone', 'geocoded_at'],
+        'tiers' => ['event_id', 'key', 'seats_taken', 'min_party', 'max_party', 'position'],
+        'rsvps' => ['event_id', 'attendee_type', 'attendee_id', 'hold_key', 'check_in_code_hash'],
+        'hosts' => ['event_id', 'host_type', 'host_id', 'added_by_type'],
+        'invitations' => ['event_id', 'invitee_type', 'invitee_id', 'token_hash'],
+        'reminder_deliveries' => ['event_id', 'offset', 'starts_at', 'dispatched_at', 'recipients'],
+    ];
 
     protected $signature = 'events:install';
 
@@ -26,10 +41,10 @@ final class InstallCommand extends Command
 
     public function handle(): int
     {
-        foreach (self::TABLES as $name) {
+        foreach (self::TABLES as $name => $columns) {
             $table = EventsConfig::table($name);
 
-            if (Schema::hasTable($table)) {
+            if (Schema::hasTable($table) && ! Schema::hasColumns($table, $columns)) {
                 $this->components->error(sprintf('The table [%s] already exists. Set another name in config/events.php (events.tables.%s) before installing.', $table, $name));
 
                 return self::FAILURE;

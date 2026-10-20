@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Schema;
 
 it('publishes the config and every migration, then prints the next steps', function (): void {
     expect(Artisan::call('events:install'))->toBe(0);
@@ -27,4 +29,28 @@ it('publishes sluggable history migrations when slug history is on', function ()
 
     expect(Artisan::call('events:install'))->toBe(0)
         ->and(Artisan::output())->toContain('sluggable-migrations');
+});
+
+test('install_reruns_after_migrate', function (): void {
+    expect(Artisan::call('events:install'))->toBe(0)
+        ->and(Artisan::call('migrate', ['--force' => true]))->toBe(0)
+        ->and(Schema::hasTable('events'))->toBeTrue();
+
+    // Run again later — to publish slug history's migrations, say: the tables are the package's own.
+    config()->set('events.slugs.history', 'on');
+
+    expect(Artisan::call('events:install'))->toBe(0)
+        ->and(Artisan::output())->toContain('sluggable-migrations')
+        ->and(glob($this->sandbox().'/database/migrations/*_create_slug_history_table.php') ?: [])->not->toBeEmpty();
+});
+
+test('install_still_refuses_a_table_of_the_host', function (): void {
+    // The host's own `events` table: installing would collide with it.
+    Schema::create('events', static function (Blueprint $table): void {
+        $table->id();
+        $table->string('name');
+    });
+
+    expect(Artisan::call('events:install'))->toBe(1)
+        ->and(Artisan::output())->toContain('The table [events] already exists');
 });

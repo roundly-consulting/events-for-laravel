@@ -134,8 +134,11 @@ it('reports a broken lifecycle and missing tables', function (): void {
 });
 
 it('refuses to install over an existing table', function (): void {
+    // A host table of that name (the package's own tables, once migrated, are recognised).
+    config()->set('events.tables.events', 'users');
+
     expect(Artisan::call('events:install'))->toBe(1)
-        ->and(Artisan::output())->toContain('events.tables.events');
+        ->and(Artisan::output())->toContain('The table [users] already exists', 'events.tables.events');
 });
 
 test('laravel_event_fake_recipe', function (): void {
