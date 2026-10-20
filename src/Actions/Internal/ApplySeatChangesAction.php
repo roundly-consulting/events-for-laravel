@@ -24,7 +24,9 @@ use RoundlyConsulting\Events\Support\SeatBook;
  * implies — a check-in code for going, a priced hold for held, a queue place for waitlisted — and
  * moves the event's and the ticket types' counters by exact deltas on the locked rows. Fires
  * `RsvpChanged` and the status events (after commit). `answer` marks the attendee's own answer
- * (`responded_at`); `promotion` a move off the waitlist.
+ * (`responded_at`); `promotion` a move off the waitlist; `paid` a seat a payment confirmed —
+ * any other way into going (a free ticket type, a comp seat) drops the old hold's checkout, so
+ * its webhook is not found (refund) and leaving never reports a payment.
  *
  * @internal
  */
@@ -46,6 +48,7 @@ final readonly class ApplySeatChangesAction
         bool $promotion = false,
         bool $late = false,
         bool $answer = false,
+        bool $paid = false,
     ): Rsvp {
         $from = $rsvp->exists ? $rsvp->status : null;
         $fromParty = $rsvp->exists ? $rsvp->partySize() : 0;
@@ -58,7 +61,7 @@ final readonly class ApplySeatChangesAction
         $now = Clock::now();
 
         match ($to) {
-            RsvpStatus::Going => $this->going($rsvp, $from),
+            RsvpStatus::Going => $this->going($rsvp, $from, $paid),
             RsvpStatus::Held => $this->held($book, $rsvp, $promotion, $from !== RsvpStatus::Held || $fromParty !== $rsvp->partySize() || $fromTier !== $tierId),
             RsvpStatus::Waitlisted => $this->waitlisted($rsvp, $from !== RsvpStatus::Waitlisted || $fromTier !== $tierId),
             default => $this->away($rsvp),
@@ -97,10 +100,16 @@ final readonly class ApplySeatChangesAction
         return $rsvp;
     }
 
-    private function going(Rsvp $rsvp, ?RsvpStatus $from): void
+    private function going(Rsvp $rsvp, ?RsvpStatus $from, bool $paid): void
     {
         if ($from !== RsvpStatus::Going) {
             $rsvp->confirmed_at = Clock::now();
+
+            if (! $paid) {
+                $rsvp->payment_reference = null;
+                $rsvp->payment_url = null;
+                $rsvp->amount = null;
+            }
         }
 
         $rsvp->held_until = null;

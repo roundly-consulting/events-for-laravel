@@ -70,9 +70,9 @@ final readonly class ConfirmPaymentAction
             }
 
             return match ($rsvp->status) {
-                RsvpStatus::Held => $this->seats->execute($book, $rsvp, RsvpStatus::Going, $rsvp->guests, $tierId),
+                RsvpStatus::Held => $this->seats->execute($book, $rsvp, RsvpStatus::Going, $rsvp->guests, $tierId, paid: true),
                 RsvpStatus::Expired => $book->fits($rsvp->partySize(), $tierId)
-                    ? $this->seats->execute($book, $rsvp, RsvpStatus::Going, $rsvp->guests, $tierId, late: true)
+                    ? $this->seats->execute($book, $rsvp, RsvpStatus::Going, $rsvp->guests, $tierId, late: true, paid: true)
                     : throw RsvpHoldExpiredException::expired(),
                 default => throw RsvpHoldExpiredException::expired(),
             };

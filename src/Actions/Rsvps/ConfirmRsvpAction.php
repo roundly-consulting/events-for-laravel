@@ -60,7 +60,7 @@ final readonly class ConfirmRsvpAction
                 $rsvp->payment_reference = $reference;
             }
 
-            return $this->seats->execute($book, $rsvp, RsvpStatus::Going, $rsvp->guests, $tierId, $actor, late: $rsvp->status === RsvpStatus::Expired);
+            return $this->seats->execute($book, $rsvp, RsvpStatus::Going, $rsvp->guests, $tierId, $actor, late: $rsvp->status === RsvpStatus::Expired, paid: true);
         });
     }
 }
