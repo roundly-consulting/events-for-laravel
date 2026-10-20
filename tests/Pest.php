@@ -7,6 +7,7 @@ use RoundlyConsulting\Events\Tests\Fixtures\ApiTestCase;
 use RoundlyConsulting\Events\Tests\Fixtures\NewYorkTestCase;
 use RoundlyConsulting\Events\Tests\Fixtures\NoAuthApiTestCase;
 use RoundlyConsulting\Events\Tests\Fixtures\SwappedModelsTestCase;
+use RoundlyConsulting\Events\Tests\Fixtures\TokenGuardApiTestCase;
 use RoundlyConsulting\Events\Tests\Fixtures\UlidKeyTestCase;
 use RoundlyConsulting\Events\Tests\Fixtures\UuidKeyTestCase;
 use RoundlyConsulting\Events\Tests\Install\InstallTestCase;
@@ -23,6 +24,9 @@ uses(ApiTestCase::class)->in('Http');
 
 // The JSON API with an empty auth_middleware: a sibling of Http, since Pest binds one test case per file.
 uses(NoAuthApiTestCase::class)->in('NoAuth');
+
+// The JSON API behind a token guard that is not the app's default.
+uses(TokenGuardApiTestCase::class)->in('TokenGuard');
 
 // events:install, publishing into a sandbox without the package's tables.
 uses(InstallTestCase::class)->in('Install');

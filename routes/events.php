@@ -17,6 +17,7 @@ use RoundlyConsulting\Events\Http\Controllers\TierController;
 use RoundlyConsulting\Events\Http\Controllers\VenueController;
 use RoundlyConsulting\Events\Http\Controllers\WaitlistController;
 use RoundlyConsulting\Events\Http\Middleware\RequireSignedInUser;
+use RoundlyConsulting\Events\Http\Middleware\UseConfiguredGuard;
 use RoundlyConsulting\Events\Support\EventsConfig;
 
 /*
@@ -25,14 +26,15 @@ use RoundlyConsulting\Events\Support\EventsConfig;
 |--------------------------------------------------------------------------
 |
 | Loaded only with `events.routes.enabled` on. Reads allow guests (the visibility rule
-| applies: a hidden event is a 404); writes add `events.routes.auth_middleware`, then refuse any
-| request without a signed-in Eloquent user (401) — even when that list is empty. `{event}` is
-| the uuid, so `/events/feed.ics` never reaches the show route.
+| applies: a hidden event is a 404) and recognise a user of the guards `auth:<guards>` in
+| `events.routes.auth_middleware` names; writes add that middleware, then refuse any request
+| without a signed-in Eloquent user (401) — even when that list is empty. `{event}` is the uuid,
+| so `/events/feed.ics` never reaches the show route.
 |
 */
 
 Route::prefix(EventsConfig::routesPrefix())
-    ->middleware(EventsConfig::routesMiddleware())
+    ->middleware([...EventsConfig::routesMiddleware(), UseConfiguredGuard::class])
     ->name('events.')
     ->group(static function (): void {
         // Public reads.

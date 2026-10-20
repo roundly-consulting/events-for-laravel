@@ -16,6 +16,7 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 - A checkout requested for a hold that was refreshed during the collector call (a new party size or ticket type, so a new amount) is discarded and reported with `RsvpPaymentRequestDiscarded` instead of being attached to the new hold — paying the old, smaller checkout no longer confirms the larger party.
 - Hosts that use immutable dates (`Date::use(CarbonImmutable::class)`) can save the package's models again: their UTC timestamps no longer throw a `TypeError`.
 - Leaving going (a manager's `attendees()->remove()`, any other status change) clears the RSVP's check-in record, and `attendees()->checkedIn()` lists going RSVPs only: a removed attendee no longer shows as checked in, and when put back on the list their new code checks in for the first time (`AttendeeCheckedIn`) and they may decline again.
+- Read routes recognise a user of the guards `events.routes.auth_middleware` names (`auth:sanctum` tokens, say): such a caller no longer reads as a guest (private events they were invited to, their own RSVP, `filter[mine]`, the online link). Guests are still allowed. If you published `routes/events.php`, add `RoundlyConsulting\Events\Http\Middleware\UseConfiguredGuard` to its outer group.
 
 ## 1.0.0 - 2026-10-20
 
