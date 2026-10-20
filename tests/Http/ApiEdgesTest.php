@@ -87,3 +87,22 @@ test('show_counts_off_hides_tier_seats_left', function (): void {
     Events::for($event)->update(new UpdateEventData(showCounts: true));
     expect($this->actingAs(User::factory()->create())->getJson("/api/events/{$event->uuid}")->json('data.tiers.0.seats_left'))->toBe(97);
 });
+
+test('popularity_never_ranks_hidden_counts', function (): void {
+    $quiet = Scenarios::event(capacity: 100, organizer: $this->organizer);
+    Events::for($quiet)->update(new UpdateEventData(title: 'Quiet', showCounts: false));
+    $loud = Scenarios::event(capacity: 100);
+    Events::for($loud)->update(new UpdateEventData(title: 'Loud'));
+    foreach (range(1, 3) as $ignored) {
+        Events::for($quiet)->rsvp(User::factory()->create())->going();
+    }
+    Events::for($loud)->rsvp(User::factory()->create())->going();
+
+    // Ranked by what everyone may see: the hidden count sorts as nothing.
+    $order = collect($this->getJson('/api/events?sort=-popularity')->assertOk()->json('data'))->pluck('title')->all();
+    expect($order)->toBe(['Loud', 'Quiet']);
+
+    // The organizer's own list ranks by the real numbers.
+    $mine = collect($this->actingAs($this->organizer)->getJson('/api/events?filter[mine]=organizing&sort=-popularity')->assertOk()->json('data'))->pluck('title')->all();
+    expect($mine[0])->toBe('Quiet');
+});

@@ -101,12 +101,23 @@ final class EventIndexQuery
             ->allowedSorts(
                 AllowedSort::custom('starts_at', self::column('starts_at')),
                 AllowedSort::custom('created_at', self::column('created_at')),
-                AllowedSort::custom('popularity', new class implements Sort
+                // An event whose counts are hidden ranks as nothing, so the order never tells its
+                // head count — except in the organizer's own list.
+                AllowedSort::custom('popularity', new class($mine === 'organizing') implements Sort
                 {
+                    public function __construct(private bool $managed) {}
+
                     public function apply(Builder $query, SortDirection $direction, string $property): void
                     {
-                        $query->orderBy($query->qualifyColumn('going_count'), $direction === SortDirection::Ascending ? 'asc' : 'desc')
-                            ->orderBy($query->qualifyColumn('starts_at'));
+                        $ascending = $direction === SortDirection::Ascending;
+
+                        match (true) {
+                            $this->managed => $query->orderBy($query->qualifyColumn('going_count'), $ascending ? 'asc' : 'desc'),
+                            $ascending => $query->orderByRaw('case when show_counts then going_count else 0 end asc'),
+                            default => $query->orderByRaw('case when show_counts then going_count else 0 end desc'),
+                        };
+
+                        $query->orderBy($query->qualifyColumn('starts_at'));
                     }
                 }),
                 AllowedSort::custom('distance', new class($near === null ? null : $near[0]) implements Sort
