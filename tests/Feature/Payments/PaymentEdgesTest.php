@@ -75,3 +75,56 @@ test('a_paid_seat_keeps_its_payment', function (): void {
     expect($paid->payment_reference)->toBe($held->payment_reference)->and($paid->amount?->toDecimal())->toBe('15.00');
     EventBus::assertDispatched(RsvpCancelled::class, static fn (RsvpCancelled $cancelled): bool => $cancelled->wasPaid);
 });
+
+test('a_hold_expired_by_a_webhook_promotes_the_waitlist', function (): void {
+    $event = supporterEvent(capacity: 2);
+    $lapsing = User::factory()->create();
+    $payer = User::factory()->create();
+    $waiting = User::factory()->create();
+
+    Events::for($event)->rsvp($lapsing)->going(tier: 'supporter');           // held until 12:30
+    Scenarios::freeze('2027-01-01 12:20:00');
+    $paying = Events::for($event)->rsvp($payer)->going(tier: 'supporter');   // held until 12:50
+    expect(Events::for($event)->rsvp($waiting)->going(tier: 'supporter')->status)->toBe(RsvpStatus::Waitlisted);
+
+    Scenarios::freeze('2027-01-01 12:40:00');
+    Events::rsvps()->confirmPayment((string) $paying->payment_reference);
+
+    expect($lapsing->rsvpFor($event)?->status)->toBe(RsvpStatus::Expired)
+        ->and($waiting->rsvpFor($event)?->status)->toBe(RsvpStatus::Held)
+        ->and($event->fresh()?->seats_taken)->toBe(2);
+});
+
+test('a_hold_expired_by_a_door_confirmation_promotes_the_waitlist', function (): void {
+    $event = supporterEvent(capacity: 2);
+    $lapsing = User::factory()->create();
+    $payer = User::factory()->create();
+    $waiting = User::factory()->create();
+
+    Events::for($event)->rsvp($lapsing)->going(tier: 'supporter');
+    Scenarios::freeze('2027-01-01 12:20:00');
+    $paying = Events::for($event)->rsvp($payer)->going(tier: 'supporter');
+    Events::for($event)->rsvp($waiting)->going(tier: 'supporter');
+
+    Scenarios::freeze('2027-01-01 12:40:00');
+    Events::rsvps()->confirm($paying);
+
+    expect($waiting->rsvpFor($event)?->status)->toBe(RsvpStatus::Held);
+});
+
+test('a_repeated_door_confirmation_still_promotes_after_a_lapsed_hold', function (): void {
+    $event = supporterEvent(capacity: 2);
+    $payer = User::factory()->create();
+    $lapsing = User::factory()->create();
+    $waiting = User::factory()->create();
+
+    $paid = Events::rsvps()->confirm(Events::for($event)->rsvp($payer)->going(tier: 'supporter'));
+    Events::for($event)->rsvp($lapsing)->going(tier: 'supporter');            // held until 12:30
+    Events::for($event)->rsvp($waiting)->going(tier: 'supporter');
+
+    Scenarios::freeze('2027-01-01 12:40:00');
+    Events::rsvps()->confirm($paid);
+
+    expect($lapsing->rsvpFor($event)?->status)->toBe(RsvpStatus::Expired)
+        ->and($waiting->rsvpFor($event)?->status)->toBe(RsvpStatus::Held);
+});

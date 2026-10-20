@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace RoundlyConsulting\Events\Actions\Rsvps;
 
 use RoundlyConsulting\Events\Actions\Internal\ApplySeatChangesAction;
+use RoundlyConsulting\Events\Actions\Internal\AutoPromoteAction;
 use RoundlyConsulting\Events\Actions\Internal\ExpireHoldsAction;
 use RoundlyConsulting\Events\Enums\EventPhase;
 use RoundlyConsulting\Events\Enums\RsvpStatus;
@@ -34,6 +35,7 @@ final readonly class ConfirmPaymentAction
     public function __construct(
         private ApplySeatChangesAction $seats,
         private ExpireHoldsAction $holds,
+        private AutoPromoteAction $promote,
     ) {}
 
     public function execute(string $reference): Rsvp
@@ -69,13 +71,18 @@ final readonly class ConfirmPaymentAction
                 throw RsvpClosedException::started();
             }
 
-            return match ($rsvp->status) {
+            $confirmed = match ($rsvp->status) {
                 RsvpStatus::Held => $this->seats->execute($book, $rsvp, RsvpStatus::Going, $rsvp->guests, $tierId, paid: true),
                 RsvpStatus::Expired => $book->fits($rsvp->partySize(), $tierId)
                     ? $this->seats->execute($book, $rsvp, RsvpStatus::Going, $rsvp->guests, $tierId, late: true, paid: true)
                     : throw RsvpHoldExpiredException::expired(),
                 default => throw RsvpHoldExpiredException::expired(),
             };
+
+            // Someone else's lapsed hold released above: the next sweep would not see it again.
+            $this->promote->execute($book);
+
+            return $confirmed;
         });
     }
 }

@@ -6,6 +6,7 @@ namespace RoundlyConsulting\Events\Actions\Rsvps;
 
 use Illuminate\Database\Eloquent\Model;
 use RoundlyConsulting\Events\Actions\Internal\ApplySeatChangesAction;
+use RoundlyConsulting\Events\Actions\Internal\AutoPromoteAction;
 use RoundlyConsulting\Events\Actions\Internal\ExpireHoldsAction;
 use RoundlyConsulting\Events\Enums\EventPhase;
 use RoundlyConsulting\Events\Enums\RsvpStatus;
@@ -29,6 +30,7 @@ final readonly class ConfirmRsvpAction
     public function __construct(
         private ApplySeatChangesAction $seats,
         private ExpireHoldsAction $holds,
+        private AutoPromoteAction $promote,
     ) {}
 
     public function execute(Event $event, Rsvp|Model $who, ?string $reference = null, ?Model $actor = null): Rsvp
@@ -40,11 +42,15 @@ final readonly class ConfirmRsvpAction
                 throw RsvpClosedException::closed();
             }
 
-            $this->holds->execute($book);
+            $expired = $this->holds->execute($book);
             $rsvp = RsvpRules::rsvpOf($event, $who) ?? throw RsvpNotFoundException::missing();
             $tierId = $rsvp->tier_id === null ? null : (int) $rsvp->tier_id;
 
             if ($rsvp->status === RsvpStatus::Going) {
+                if ($expired > 0) {
+                    $this->promote->execute($book);
+                }
+
                 return $rsvp;
             }
 
@@ -60,7 +66,11 @@ final readonly class ConfirmRsvpAction
                 $rsvp->payment_reference = $reference;
             }
 
-            return $this->seats->execute($book, $rsvp, RsvpStatus::Going, $rsvp->guests, $tierId, $actor, late: $rsvp->status === RsvpStatus::Expired, paid: true);
+            $this->seats->execute($book, $rsvp, RsvpStatus::Going, $rsvp->guests, $tierId, $actor, late: $rsvp->status === RsvpStatus::Expired, paid: true);
+            // Lapsed holds released above give their seats to the waitlist.
+            $this->promote->execute($book);
+
+            return $rsvp;
         });
     }
 }
