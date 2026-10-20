@@ -26,11 +26,12 @@ use Throwable;
  * way). A failing collector fires `RsvpPaymentRequestFailed` and throws; the hold stays and
  * expires on its own.
  *
- * A checkout for a hold that changed during the collector call (released, declined, refreshed,
- * or given another checkout meanwhile) is kept nowhere: nothing is announced, null is returned
- * and `RsvpPaymentRequestDiscarded` reports it so the host can void it. The same reference
- * stored meanwhile (an idempotent collector answering a repeated request) counts as stored —
- * collectors pass `$rsvp->paymentIdempotencyKey()` to the provider for exactly that.
+ * A checkout for a hold that changed during the collector call (released, declined, refreshed —
+ * a new party or ticket type gives it a new `hold_key` and amount — or given another checkout
+ * meanwhile) is kept nowhere: nothing is announced, null is returned and
+ * `RsvpPaymentRequestDiscarded` reports it so the host can void it. The same reference stored
+ * meanwhile for the same hold (an idempotent collector answering a repeated request) counts as
+ * stored — collectors pass `$rsvp->paymentIdempotencyKey()` to the provider for exactly that.
  */
 final readonly class RequestAdmissionPaymentAction
 {
@@ -58,6 +59,9 @@ final readonly class RequestAdmissionPaymentAction
             return null;
         }
 
+        // The hold this checkout is for: a refresh during the call gives the RSVP another one.
+        $holdKey = $rsvp->hold_key;
+
         try {
             $request = $this->collector->request($rsvp, $amount);
         } catch (Throwable $exception) {
@@ -67,7 +71,7 @@ final readonly class RequestAdmissionPaymentAction
         }
 
         if ($request !== null) {
-            $stored = $this->store($rsvp, $request);
+            $stored = $this->store($rsvp, $request, $holdKey);
             $given->setRawAttributes($rsvp->getAttributes(), true);
 
             if (! $stored) {
@@ -85,11 +89,11 @@ final readonly class RequestAdmissionPaymentAction
     /**
      * @return bool whether the hold now carries this checkout
      */
-    private function store(Rsvp $rsvp, PaymentRequest $request): bool
+    private function store(Rsvp $rsvp, PaymentRequest $request, ?string $holdKey): bool
     {
         $event = $rsvp->event;
 
-        return EventTransaction::run($event, static function () use ($event, $rsvp, $request): bool {
+        return EventTransaction::run($event, static function () use ($event, $rsvp, $request, $holdKey): bool {
             LockedEvent::lock($event, allowTrashed: true);
             $current = EventModels::rsvp()::query()->whereKey($rsvp->getKey())->lockForUpdate()->first();
 
@@ -97,9 +101,9 @@ final readonly class RequestAdmissionPaymentAction
                 $rsvp->setRawAttributes($current->getAttributes(), true);
             }
 
-            // The hold changed meanwhile (released, refreshed, given another checkout): this
-            // checkout belongs to nothing.
-            if ($current === null || $current->status !== RsvpStatus::Held) {
+            // The hold changed meanwhile (released, refreshed for another party or ticket type,
+            // given another checkout): this checkout belongs to nothing.
+            if ($current === null || $current->status !== RsvpStatus::Held || $current->hold_key !== $holdKey) {
                 return false;
             }
 

@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event as EventBus;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Route;
 use RoundlyConsulting\Events\Contracts\CollectsAdmissionPayment;
 use RoundlyConsulting\Events\DataTransferObjects\UpdateEventData;
@@ -447,6 +448,38 @@ test('a_checkout_for_a_hold_that_changed_meanwhile_is_discarded', function (): v
     expect(Events::rsvps()->requestPayment($held))->toBeNull()
         ->and($held->fresh()?->payment_reference)->toBeNull();
     EventBus::assertDispatchedTimes(RsvpPaymentRequestDiscarded::class, 2);
+});
+
+test('a_checkout_for_a_refreshed_hold_is_discarded', function (): void {
+    SlowCollector::reset();
+    app()->bind(CollectsAdmissionPayment::class, SlowCollector::class);
+    EventBus::fake([RsvpHeld::class, RsvpPaymentRequestDiscarded::class]);
+    Queue::fake();
+    $event = paidEvent(capacity: 10);
+    $user = User::factory()->create();
+
+    // The organizer adds a guest while the provider builds the checkout for a party of one: the
+    // hold is refreshed (a new key, 30.00) and its own request is queued.
+    SlowCollector::$during = static fn () => Events::for($event)->attendees()->changeGuests($user, 1);
+    $rsvp = Events::for($event)->rsvp($user)->going(tier: 'supporter');
+
+    $held = $rsvp->fresh();
+    expect($held?->status)->toBe(RsvpStatus::Held)
+        ->and($held?->partySize())->toBe(2)
+        ->and($held?->amount?->toDecimal())->toBe('30.00')
+        ->and($held?->payment_reference)->toBeNull()
+        ->and(SlowCollector::$keys[0])->not->toBe($held?->paymentIdempotencyKey());
+    EventBus::assertNotDispatched(RsvpHeld::class);
+    EventBus::assertDispatched(RsvpPaymentRequestDiscarded::class, static fn (RsvpPaymentRequestDiscarded $discarded): bool => $discarded->rsvp->is($rsvp));
+
+    // The refreshed hold gets its own checkout, for its own amount.
+    Queue::assertPushed(RequestAdmissionPaymentJob::class);
+    app()->call([new RequestAdmissionPaymentJob((int) $rsvp->getKey()), 'handle']);
+
+    expect(SlowCollector::$keys)->toHaveCount(2)
+        ->and(SlowCollector::$keys[1])->toBe($held?->paymentIdempotencyKey())
+        ->and($rsvp->fresh()?->payment_reference)->toBe('cs_'.$rsvp->getKey());
+    EventBus::assertDispatched(RsvpHeld::class, static fn (RsvpHeld $announced): bool => $announced->amount->toDecimal() === '30.00');
 });
 
 test('rsvp_held_is_only_fired_for_a_stored_checkout', function (): void {

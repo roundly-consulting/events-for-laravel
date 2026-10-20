@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use RoundlyConsulting\Events\Contracts\CollectsAdmissionPayment;
 use RoundlyConsulting\Events\Enums\RsvpStatus;
 use RoundlyConsulting\Events\Exceptions\RsvpHoldExpiredException;
 use RoundlyConsulting\Events\Facades\Events;
@@ -10,6 +11,7 @@ use RoundlyConsulting\Events\Models\Rsvp;
 use RoundlyConsulting\Events\Support\EventCounters;
 use RoundlyConsulting\Events\Tests\Fixtures\Models\User;
 use RoundlyConsulting\Events\Tests\Fixtures\Payments\FakePaymentCollector;
+use RoundlyConsulting\Events\Tests\Fixtures\Payments\SleepyCollector;
 use RoundlyConsulting\Events\Tests\Support\Racer;
 use RoundlyConsulting\Events\Tests\Support\Scenarios;
 use RoundlyConsulting\Money\Money;
@@ -145,4 +147,33 @@ test('holds_expire_once', function (): void {
         ->and($event->fresh()?->seats_taken)->toBe(1)
         ->and(EventCounters::stored($event))->toEqual(EventCounters::recount($event));
     expect($sweep)->toBeIn(['0', '1']);
+})->skip(fn (): bool => ! Racer::available(), 'needs a real engine and pcntl')->group('real-engine');
+
+test('a_party_change_racing_its_checkout_keeps_the_new_amount', function (): void {
+    app()->bind(CollectsAdmissionPayment::class, SleepyCollector::class);
+    $event = Scenarios::event(capacity: 10, maxGuests: 2);
+    Events::for($event)->tiers()->add('Supporter', price: Money::ofMajor('15', 'EUR'), key: 'supporter');
+    $user = User::factory()->create();
+    $eventId = $event->getKey();
+    $userId = $user->getKey();
+    $answer = static fn (int $guests): Closure => static function () use ($eventId, $userId, $guests): string {
+        $rsvp = Events::for(Event::query()->findOrFail($eventId))->rsvp(User::query()->findOrFail($userId))->going(tier: 'supporter', guests: $guests);
+
+        return $rsvp->status->value;
+    };
+
+    // A party of one asks for its checkout (15.00, answered after 1.5 s); half a second later the
+    // same attendee brings two guests (45.00, answered after 3 s). The smaller checkout comes back
+    // first, onto the refreshed hold.
+    $one = (new Racer)->run($answer(0));
+    usleep(500_000);
+    $three = (new Racer)->run($answer(2));
+
+    expect([$one->outcome(), $three->outcome()])->toBe(['held', 'held']);
+
+    $rsvp = $user->rsvpFor($event);
+
+    expect($rsvp?->partySize())->toBe(3)
+        ->and($rsvp?->amount?->toDecimal())->toBe('45.00')
+        ->and($rsvp?->payment_reference)->toBe('race_45.00');
 })->skip(fn (): bool => ! Racer::available(), 'needs a real engine and pcntl')->group('real-engine');

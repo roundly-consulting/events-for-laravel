@@ -9,6 +9,7 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 ### Fixed
 
 - `PATCH /events/{event}/attendees/{rsvp}` checks `manageAttendees` before anything else: an empty body no longer returns the managers' view of the RSVP to any signed-in user (it is a 403, and a manager gets a 422 naming the missing `tier` / `guests`).
+- A checkout requested for a hold that was refreshed during the collector call (a new party size or ticket type, so a new amount) is discarded and reported with `RsvpPaymentRequestDiscarded` instead of being attached to the new hold — paying the old, smaller checkout no longer confirms the larger party.
 
 ## 1.0.0 - 2026-10-20
 
