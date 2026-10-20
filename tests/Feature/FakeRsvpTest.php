@@ -5,10 +5,12 @@ declare(strict_types=1);
 use Illuminate\Auth\Access\AuthorizationException;
 use PHPUnit\Framework\ExpectationFailedException;
 use RoundlyConsulting\Events\DataTransferObjects\UpdateEventData;
+use RoundlyConsulting\Events\Enums\EventOperation;
 use RoundlyConsulting\Events\Enums\RsvpStatus;
 use RoundlyConsulting\Events\Facades\Events;
 use RoundlyConsulting\Events\Models\AdmissionTier;
 use RoundlyConsulting\Events\Testing\EventsFake;
+use RoundlyConsulting\Events\Testing\RecordedEventOperation;
 use RoundlyConsulting\Events\Tests\Fixtures\Models\User;
 use RoundlyConsulting\Events\Tests\Fixtures\Payments\FakePaymentCollector;
 use RoundlyConsulting\Events\Tests\Support\Scenarios;
@@ -106,4 +108,24 @@ it('reads the managers\' side of the list', function (): void {
 
     $draft = Scenarios::event(publish: false);
     expect(fn () => Events::for($draft)->rsvp($a)->by($a)->going())->toThrow(AuthorizationException::class);
+});
+
+test('a_paid_rsvp_records_its_payment_request', function (): void {
+    FakePaymentCollector::reset();
+    config()->set('events.payments.collector', FakePaymentCollector::class);
+    $event = Scenarios::event(capacity: 5);
+    Events::for($event)->tiers()->add('Paid', price: Money::ofMajor('15', 'EUR'), key: 'paid');
+    $fake = Events::fake();
+    $attendee = User::factory()->create();
+
+    // The attendee's own answer asks for the checkout after commit — through the manager, with
+    // no actor (the attendee needs no ability for their own checkout), so the fake sees it.
+    $rsvp = Events::for($event)->by($attendee)->rsvp($attendee)->going(tier: 'paid');
+
+    expect(FakePaymentCollector::$calls)->toHaveCount(1)
+        ->and($rsvp->fresh()?->payment_reference)->toBe('pay_'.$rsvp->getKey().'_1');
+    $fake->assertPaymentRequested($event);
+    $fake->assertPerformed(EventOperation::RequestPayment, static fn (RecordedEventOperation $recorded): bool => $recorded->model('actor') === null
+        && $recorded->model('rsvp')?->is($rsvp) === true);
+    expect(fn () => $fake->assertNoPaymentRequested())->toThrow(ExpectationFailedException::class);
 });

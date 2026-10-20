@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Events\Actions\Rsvps;
 
+use Illuminate\Container\Container;
 use Illuminate\Database\Eloquent\Model;
 use RoundlyConsulting\Events\Actions\Internal\ApplySeatChangesAction;
 use RoundlyConsulting\Events\Actions\Internal\AutoPromoteAction;
@@ -12,6 +13,7 @@ use RoundlyConsulting\Events\DataTransferObjects\RsvpRequest;
 use RoundlyConsulting\Events\Enums\InvitationStatus;
 use RoundlyConsulting\Events\Enums\RsvpResponse;
 use RoundlyConsulting\Events\Enums\RsvpStatus;
+use RoundlyConsulting\Events\EventsManager;
 use RoundlyConsulting\Events\Exceptions\InvalidRsvpTransitionException;
 use RoundlyConsulting\Events\Models\AdmissionTier;
 use RoundlyConsulting\Events\Models\Event;
@@ -38,7 +40,8 @@ use RoundlyConsulting\Events\Support\SeatErrors;
  *
  * Race-free: the event row is locked first, then its ticket types, then the RSVP; lapsed holds
  * are released before any seat is counted. A hold the attendee asked for requests its payment
- * right after commit, so the caller gets the checkout; the collector's exception reaches them.
+ * right after commit, through the manager with no actor (`Events::rsvps()->requestPayment()`), so
+ * the caller gets the checkout and the fake records it; the collector's exception reaches them.
  */
 final readonly class RespondToEventAction
 {
@@ -46,7 +49,6 @@ final readonly class RespondToEventAction
         private ApplySeatChangesAction $seats,
         private ExpireHoldsAction $holds,
         private AutoPromoteAction $promote,
-        private RequestAdmissionPaymentAction $payments,
     ) {}
 
     public function execute(Event $event, RsvpRequest $request): Rsvp
@@ -84,10 +86,11 @@ final readonly class RespondToEventAction
         });
 
         // A new or refreshed hold has a new key — held_until alone misses a refresh near the
-        // start, where every hold ends at the start.
+        // start, where every hold ends at the start. Asked through the manager (no actor: the
+        // package's own request), as the queued job asks, so `Events::fake()` records it.
         if ($rsvp->status === RsvpStatus::Held && $rsvp->payment_reference === null
             && ($rsvp->wasChanged('hold_key') || $rsvp->wasRecentlyCreated)) {
-            $rsvp->getConnection()->afterCommit(fn () => $this->payments->execute($rsvp));
+            $rsvp->getConnection()->afterCommit(static fn () => Container::getInstance()->make(EventsManager::class)->rsvps()->requestPayment($rsvp));
         }
 
         return $rsvp;

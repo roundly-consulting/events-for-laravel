@@ -260,7 +260,18 @@ dataset('operations', [
     }],
     'request payment' => [static function (): array {
         $event = paidCatalogEvent();
-        $held = Events::for($event)->rsvp(User::factory()->create())->going();
+        // The answer's own request is recorded too (it goes through the manager): let it fail,
+        // which records nothing, so the host asks again by hand below.
+        FakePaymentCollector::$fails = true;
+
+        try {
+            Events::for($event)->rsvp($user = User::factory()->create())->going();
+        } catch (RuntimeException) {
+            // The collector's failure reaches the caller.
+        }
+
+        FakePaymentCollector::$fails = false;
+        $held = $user->rsvpFor($event) ?? throw new RuntimeException('No hold.');
 
         return [fn () => Events::rsvps()->requestPayment($held), fn (EventsFake $fake) => $fake->assertPaymentRequested($event), fn (EventsFake $fake) => $fake->assertPaymentRequested(catalogEvent()), 'assertNoPaymentRequested'];
     }],

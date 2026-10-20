@@ -565,7 +565,8 @@ final class EventsFake extends EventsManager
     }
 
     /**
-     * A checkout requested for a hold at `$event` (by hand or by the package's own job).
+     * A checkout requested for a hold at `$event` — by hand, by an attendee's own paid answer, or
+     * by the package's own job (a promotion, a manager's change).
      */
     public function assertPaymentRequested(?Event $event = null): void
     {
