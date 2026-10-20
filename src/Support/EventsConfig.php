@@ -385,12 +385,26 @@ final class EventsConfig
 
     public static function holdFor(): CarbonInterval
     {
-        return self::duration(Config::string('events.payments.hold_for', 'PT30M'), 'events.payments.hold_for');
+        return self::positive(Config::string('events.payments.hold_for', 'PT30M'), 'events.payments.hold_for');
     }
 
     public static function promotionHold(): CarbonInterval
     {
-        return self::duration(Config::string('events.payments.promotion_hold', 'PT24H'), 'events.payments.promotion_hold');
+        return self::positive(Config::string('events.payments.promotion_hold', 'PT24H'), 'events.payments.promotion_hold');
+    }
+
+    /**
+     * A duration that lasts: a zero-length hold would expire before its checkout exists.
+     */
+    private static function positive(string $value, string $key): CarbonInterval
+    {
+        $duration = self::duration($value, $key);
+
+        if ($duration->totalSeconds <= 0) {
+            throw InvalidEventsConfigurationException::outOfRange($key, $value, 'longer than zero');
+        }
+
+        return $duration;
     }
 
     public static function checkInOpensBefore(): CarbonInterval

@@ -182,7 +182,7 @@ final readonly class Doctor
                 EventsConfig::organizerResource(), EventsConfig::hostResource(), EventsConfig::attendeeResource(),
                 EventsConfig::inviteeResource(), EventsConfig::actorResource(), EventsConfig::venueOwnerResource(),
             ],
-            'payments' => fn (): object => $this->container->make(CollectsAdmissionPayment::class),
+            'payments' => fn (): array => [$this->container->make(CollectsAdmissionPayment::class), EventsConfig::holdFor(), EventsConfig::promotionHold()],
             'reminders' => static fn (): array => [EventsConfig::reminderOffsets(), EventsConfig::reminderMaxLateness()],
         ];
 

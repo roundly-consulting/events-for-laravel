@@ -69,3 +69,20 @@ test('configured_reminder_offsets_in_range_are_read', function (): void {
 
     expect(EventsConfig::reminderOffsets())->toBe(['P31D', 'PT5M']);
 });
+
+test('payment_holds_must_last', function (string $key): void {
+    config()->set($key, 'PT0S');
+
+    expect(fn () => $key === 'events.payments.hold_for' ? EventsConfig::holdFor() : EventsConfig::promotionHold())
+        ->toThrow(InvalidEventsConfigurationException::class, $key);
+})->with(['events.payments.hold_for', 'events.payments.promotion_hold']);
+
+test('doctor_reports_unusable_durations_early', function (): void {
+    config()->set('events.reminders.offsets', ['P40D']);
+    config()->set('events.payments.hold_for', 'PT0S');
+
+    expect(Artisan::call('events:doctor', ['--json' => true]))->toBe(1);
+    $checks = array_column(json_decode(trim(Artisan::output()), true), 'check');
+
+    expect($checks)->toContain('reminders', 'payments');
+});
