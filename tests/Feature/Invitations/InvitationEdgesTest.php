@@ -90,3 +90,41 @@ test('invitations_sent_on_a_draft_reach_the_invitee_on_publish', function (): vo
     expect(fn () => Events::invitations()->accept((string) $first->plainToken, by: $guest))->toThrow(InvalidInvitationException::class)
         ->and(Events::invitations()->accept((string) $sent?->data['token'], by: $guest)->status)->toBe(RsvpStatus::Going);
 });
+
+test('a_revocation_racing_an_answer_stays_revoked', function (): void {
+    $event = townHall();
+    $invitee = User::factory()->create();
+    $token = (string) Events::for($event)->invitations()->send($invitee)->plainToken;
+
+    // The organizer's revoke lands right after the answer's RSVP commits.
+    $revoked = false;
+    EventBus::listen(RsvpChanged::class, static function () use (&$revoked, $event, $invitee): void {
+        if (! $revoked) {
+            $revoked = true;
+            Events::for($event)->invitations()->revoke($invitee);
+        }
+    });
+
+    Events::invitations()->accept($token, RsvpResponse::Interested, $invitee);
+
+    expect(EventInvitation::query()->where('event_id', $event->getKey())->first()?->status)->toBe(InvitationStatus::Revoked)
+        ->and(EventVisibility::canView($event->fresh() ?? $event, $invitee))->toBeFalse();
+});
+
+test('an_answer_to_a_link_revoked_meanwhile_is_refused', function (): void {
+    $event = Scenarios::event(capacity: 10);
+    $invitee = User::factory()->create();
+    $token = (string) Events::for($event)->invitations()->send($invitee)->plainToken;
+
+    // Revoked right after the link was read, before the answer is written.
+    $once = false;
+    EventBus::listen('eloquent.retrieved: '.EventInvitation::class, static function () use (&$once, $event, $invitee): void {
+        if (! $once) {
+            $once = true;
+            Events::for($event)->invitations()->revoke($invitee);
+        }
+    });
+
+    expect(fn () => Events::invitations()->accept($token, RsvpResponse::NotGoing, $invitee))->toThrow(InvalidInvitationException::class)
+        ->and($invitee->rsvpFor($event))->toBeNull();
+});

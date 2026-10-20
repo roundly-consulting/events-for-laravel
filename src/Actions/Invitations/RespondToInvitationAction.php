@@ -14,9 +14,12 @@ use RoundlyConsulting\Events\Enums\RsvpResponse;
 use RoundlyConsulting\Events\Events\InvitationAccepted;
 use RoundlyConsulting\Events\Events\InvitationDeclined;
 use RoundlyConsulting\Events\Exceptions\InvalidInvitationException;
+use RoundlyConsulting\Events\Models\EventInvitation;
 use RoundlyConsulting\Events\Models\Rsvp;
 use RoundlyConsulting\Events\Support\Clock;
+use RoundlyConsulting\Events\Support\EventTransaction;
 use RoundlyConsulting\Events\Support\InvitationTokens;
+use RoundlyConsulting\Events\Support\SeatBook;
 use SensitiveParameter;
 
 /**
@@ -49,12 +52,30 @@ final readonly class RespondToInvitationAction
             throw InvalidInvitationException::invalid();
         }
 
-        $rsvp = $this->rsvps->execute($invitation->event, new RsvpRequest($invitee, $response));
+        $event = $invitation->event;
 
-        $invitation->status = $response === RsvpResponse::NotGoing ? InvitationStatus::Declined : InvitationStatus::Accepted;
-        $invitation->responded_at = Clock::now();
-        $invitation->token_hash = null;
-        $invitation->save();
+        // One transaction with the answer, the invitation re-read under its lock (after the
+        // event's and its ticket types'): a revocation lands before (refused) or after (it wins),
+        // never in between to be overwritten.
+        $rsvp = EventTransaction::run($event, function () use ($event, $invitation, $invitee, $response): Rsvp {
+            SeatBook::open($event);
+            $current = EventInvitation::query()->whereKey($invitation->getKey())->lockForUpdate()->first();
+
+            if ($current === null || ! in_array($current->status, [InvitationStatus::Pending, InvitationStatus::Accepted], true)
+                || $current->token_hash !== $invitation->token_hash) {
+                throw InvalidInvitationException::invalid();
+            }
+
+            $rsvp = $this->rsvps->execute($event, new RsvpRequest($invitee, $response));
+
+            $current->status = $response === RsvpResponse::NotGoing ? InvitationStatus::Declined : InvitationStatus::Accepted;
+            $current->responded_at = Clock::now();
+            $current->token_hash = null;
+            $current->save();
+            $invitation->setRawAttributes($current->getAttributes(), true);
+
+            return $rsvp;
+        });
 
         $this->events->dispatch($response === RsvpResponse::NotGoing
             ? new InvitationDeclined($invitation)
